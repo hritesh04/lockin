@@ -8,9 +8,12 @@
     "scheme": "lockin",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.acerowl.lockin",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.acerowl.lockin",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -34,7 +37,8 @@
             "imageWidth": 76
           }
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,

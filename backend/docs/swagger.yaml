@@ -1,0 +1,371 @@
+basePath: /api
+definitions:
+  internal_handlers.AnswerReq:
+    properties:
+      question_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      selected_answer:
+        example: A
+        type: string
+    type: object
+  internal_handlers.CreateTopicReq:
+    properties:
+      familiarity_level:
+        description: beginner, some_exposure, basics
+        example: beginner
+        type: string
+      title:
+        example: Quantum Mechanics
+        type: string
+    type: object
+  internal_handlers.LoginReq:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: supersecret
+        type: string
+    type: object
+  internal_handlers.RefreshReq:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  internal_handlers.RegisterReq:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      name:
+        example: Alice
+        type: string
+      password:
+        example: supersecret
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: LockIn Support
+    url: https://github.com/acerowl/lockin
+  description: Adaptive learning backend — quiz generation, sessions, and progress
+    tracking.
+  license:
+    name: MIT
+  termsOfService: http://swagger.io/terms/
+  title: LockIn API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a user and returns access + refresh tokens
+      parameters:
+      - description: Login credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.LoginReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Login
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Exchanges a valid refresh token for a new access + refresh token
+        pair
+      parameters:
+      - description: Refresh token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.RefreshReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Refresh access token
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account and returns access + refresh tokens
+      parameters:
+      - description: Registration payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.RegisterReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Register a new user
+      tags:
+      - auth
+  /sessions/{id}/answer:
+    post:
+      consumes:
+      - application/json
+      description: Records the user's answer for a question and returns correctness
+        feedback
+      parameters:
+      - description: Session UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Answer payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.AnswerReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit an answer
+      tags:
+      - sessions
+  /sessions/{id}/complete:
+    post:
+      description: Marks a session as completed
+      parameters:
+      - description: Session UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Complete a session
+      tags:
+      - sessions
+  /topics:
+    get:
+      description: Returns all topics for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List topics
+      tags:
+      - topics
+    post:
+      consumes:
+      - application/json
+      description: Creates a new learning topic and triggers async question generation
+      parameters:
+      - description: Topic payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.CreateTopicReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a topic
+      tags:
+      - topics
+  /topics/{id}:
+    get:
+      description: Fetches a single topic by ID
+      parameters:
+      - description: Topic UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a topic
+      tags:
+      - topics
+  /topics/{id}/session:
+    get:
+      description: Fetches up to 10 unanswered questions for a topic and creates a
+        new session
+      parameters:
+      - description: Topic UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Start a session
+      tags:
+      - sessions
+  /users/me:
+    get:
+      description: Returns the profile of the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user
+      tags:
+      - users
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and the JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
