@@ -1,5 +1,7 @@
+import SessionComplete from '@/components/SessionComplete';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as SQLite from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,7 +12,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import * as SQLite from 'expo-sqlite';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { persistTopicProgress } from '../../../../lib/topicsDb';
 import { useSessionStore } from '../../../../store/session';
@@ -68,25 +69,32 @@ export default function SessionScreen() {
     }
   };
 
-  const handleComplete = () => {
+  const handleDashboard = () => {
     const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
     updateTopicProgress(id as string, pct, 1);
     void persistTopicProgress(db, id as string, pct, 1);
     router.back();
   };
 
+  const handleNextSession = () => {
+    const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+    updateTopicProgress(id as string, pct, 1);
+    void persistTopicProgress(db, id as string, pct, 1);
+    resetSession();
+    router.replace(`/topics/${id as string}/session`);
+  };
+
   if (loading) return <View style={[styles.container, styles.centered]}><ActivityIndicator size="large" color="#F97316" /></View>;
 
   if (isCompleted) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <Feather name="award" size={64} color="#F97316" style={{ marginBottom: 24 }} />
-        <Text style={styles.titleCompleted}>Session Complete!</Text>
-        <Text style={styles.scoreText}>You scored {score} / {questions.length}</Text>
-        <TouchableOpacity style={styles.submitBtn} onPress={handleComplete}>
-          <Text style={styles.submitBtnText}>Finish & Return</Text>
-        </TouchableOpacity>
-      </View>
+      <SessionComplete
+        topicTitle={topic?.title || 'Session'}
+        score={score}
+        total={questions.length}
+        onContinue={handleNextSession}
+        onDashboard={handleDashboard}
+      />
     );
   }
 

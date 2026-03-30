@@ -1,18 +1,19 @@
+import SessionComplete from '@/components/SessionComplete';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as SQLite from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Animated,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Animated,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import * as SQLite from 'expo-sqlite';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { completeSession, startSession as apiStartSession, submitAnswer as apiSubmitAnswer } from '../../../../lib/api';
+import { startSession as apiStartSession, submitAnswer as apiSubmitAnswer, completeSession } from '../../../../lib/api';
 import { persistTopicProgress } from '../../../../lib/topicsDb';
 import { useSessionStore } from '../../../../store/session';
 import { useTopicsStore } from '../../../../store/topics';
@@ -139,7 +140,7 @@ export default function SpeechSessionScreen() {
     })();
   };
 
-  const handleComplete = () => {
+  const handleDashboard = () => {
     void (async () => {
       const sid = useSessionStore.getState().activeSessionId;
       if (sid) {
@@ -156,6 +157,24 @@ export default function SpeechSessionScreen() {
     })();
   };
 
+  const handleNextSession = () => {
+    void (async () => {
+      const sid = useSessionStore.getState().activeSessionId;
+      if (sid) {
+        try {
+          await completeSession(sid);
+        } catch (e) {
+          console.warn('completeSession failed', e);
+        }
+      }
+      const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+      updateTopicProgress(id as string, pct, 1);
+      await persistTopicProgress(db, id as string, pct, 1);
+      resetSession();
+      router.replace(`/topics/${id as string}/session/speech`);
+    })();
+  };
+
   if (loading) return <View style={[styles.container, styles.centered]}><ActivityIndicator size="large" color="#10B981" /></View>;
 
   if (loadError) {
@@ -169,18 +188,17 @@ export default function SpeechSessionScreen() {
     );
   }
 
-  if (isCompleted) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <Feather name="award" size={64} color="#10B981" style={{ marginBottom: 24 }} />
-        <Text style={styles.titleCompleted}>Speech Session Complete!</Text>
-        <Text style={styles.scoreText}>Great job explaining the concepts!</Text>
-        <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#10B981' }]} onPress={handleComplete}>
-          <Text style={styles.submitBtnText}>Finish & Return</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+   if (isCompleted) {
+      return (
+        <SessionComplete
+          topicTitle={topic?.title || 'Session'}
+          score={score}
+          total={questions.length}
+          onContinue={handleNextSession}
+          onDashboard={handleDashboard}
+        />
+      );
+    }
 
   const q = questions[currentIndex];
   const qNum = (currentIndex + 1).toString().padStart(2, '0');

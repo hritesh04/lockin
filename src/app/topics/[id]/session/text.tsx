@@ -19,6 +19,7 @@ import { completeSession, startSession as apiStartSession, submitAnswer as apiSu
 import { persistTopicProgress } from '../../../../lib/topicsDb';
 import { useSessionStore } from '../../../../store/session';
 import { useTopicsStore } from '../../../../store/topics';
+import SessionComplete from '../../../../components/SessionComplete';
 
 export default function TextSessionScreen() {
   const { id } = useLocalSearchParams();
@@ -102,7 +103,7 @@ export default function TextSessionScreen() {
     })();
   };
 
-  const handleComplete = () => {
+  const handleDashboard = () => {
     void (async () => {
       const sid = useSessionStore.getState().activeSessionId;
       if (sid) {
@@ -116,6 +117,24 @@ export default function TextSessionScreen() {
       updateTopicProgress(id as string, pct, 1);
       await persistTopicProgress(db, id as string, pct, 1);
       router.back();
+    })();
+  };
+
+  const handleNextSession = () => {
+    void (async () => {
+      const sid = useSessionStore.getState().activeSessionId;
+      if (sid) {
+        try {
+          await completeSession(sid);
+        } catch (e) {
+          console.warn('completeSession failed', e);
+        }
+      }
+      const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+      updateTopicProgress(id as string, pct, 1);
+      await persistTopicProgress(db, id as string, pct, 1);
+      resetSession();
+      router.replace(`/topics/${id as string}/session/text`);
     })();
   };
 
@@ -134,14 +153,13 @@ export default function TextSessionScreen() {
 
   if (isCompleted) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <Feather name="award" size={64} color="#F97316" style={{ marginBottom: 24 }} />
-        <Text style={styles.titleCompleted}>Text Session Complete!</Text>
-        <Text style={styles.scoreText}>You completed {questions.length} explanations</Text>
-        <TouchableOpacity style={styles.submitBtn} onPress={handleComplete}>
-          <Text style={styles.submitBtnText}>Finish & Return</Text>
-        </TouchableOpacity>
-      </View>
+      <SessionComplete
+        topicTitle={topic?.title || 'Session'}
+        score={score}
+        total={questions.length}
+        onContinue={handleNextSession}
+        onDashboard={handleDashboard}
+      />
     );
   }
 
