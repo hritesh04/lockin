@@ -1,16 +1,51 @@
+import { apiClient } from '@/lib/api';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTopicsStore } from '../../../store/topics';
 import { useUserStore } from '../../../store/user';
+import { useModuleStore, Module } from '../../../store/modules';
+import { useLessonStore, Lesson } from '../../../store/lessons';
 
-export default function NewSessionScreen() {
+export default function TopicDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const topics = useTopicsStore(state => state.topics);
   const topic = topics.find(t => t.id === id);
   const streakCount = useUserStore(state => state.streakCount);
+
+  const { setModules, getModulesByTopic } = useModuleStore();
+  const { setLessons, getLessonsByModule } = useLessonStore();
+
+  const roadmap = typeof id === 'string' ? getModulesByTopic(id) : [];
+  
+  const [expandedNode, setExpandedNode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  
+  useEffect(()=>{
+    const targetId = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : null);
+    if (targetId) {
+      setLoading(true);
+      apiClient.get(`/topics/roadmap/${targetId}`).then((res)=>{
+        const modules = res.data.data.modules as any[];
+        setModules(modules.map(m => ({ ...m, topicId: targetId })));
+        
+        const allLessons: any[] = [];
+        modules.forEach(m => {
+          if (m.lessons) {
+            allLessons.push(...m.lessons.map((l: any) => ({ ...l, nodeId: m.id })));
+          }
+        });
+        setLessons(allLessons);
+      }).catch(err => {
+        console.error("Failed to load roadmap:", err);
+      }).finally(() => {
+        setLoading(false);
+      });
+    }
+  },[id]);
 
   if (!topic) {
     return (
@@ -36,6 +71,24 @@ export default function NewSessionScreen() {
         break;
     }
   };
+
+  const toggleNodeInfo = (nodeId: string) => {
+    setExpandedNode(prev => prev === nodeId ? null : nodeId);
+  };
+
+  const inProgressModule = roadmap.find(m => m.status === "in-progress");
+  let continueLessonId: string | null = null;
+  if (inProgressModule) {
+    const lessons = getLessonsByModule(inProgressModule.id);
+    const inProgressLesson = lessons.find(l => l.status === "in-progress");
+    if (inProgressLesson) {
+      continueLessonId = inProgressLesson.id;
+    } else if (lessons.length > 0) {
+      continueLessonId = lessons[0].id;
+    }
+  }
+
+  const completedModulesCount = roadmap.filter(m => m.status === "completed").length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -65,9 +118,19 @@ export default function NewSessionScreen() {
             <Text style={styles.topicName}>{topic.title}</Text>
             <Text style={styles.topicSubtitle}>Advanced Architect Course</Text>
           </View>
-          <View style={styles.heroIconBox}>
-            <MaterialCommunityIcons name="atom" size={28} color="#FFF" />
-          </View>
+          <TouchableOpacity 
+            style={[styles.heroIconBox, { width: 'auto', paddingHorizontal: 16, flexDirection: 'row', gap: 8 }]}
+            onPress={() => {
+              if (continueLessonId) {
+                router.push(`/topics/${id}/${continueLessonId}`);
+              }
+            }}
+            activeOpacity={0.8}
+            disabled={!continueLessonId}
+          >
+            <Feather name="play" size={20} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Continue</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Session Modes */}
@@ -125,7 +188,7 @@ export default function NewSessionScreen() {
         <View style={styles.statsGrid}>
           <View style={styles.statBox}>
             <Feather name="rotate-ccw" size={18} color="#94A3B8" style={{ marginBottom: 12 }} />
-            <Text style={styles.statValue}>{topic.sessionsCompleted}</Text>
+            <Text style={styles.statValue}>{topic.sessionsCompleted || 0}</Text>
             <Text style={styles.statLabel}>SESSIONS</Text>
           </View>
           <View style={styles.statBox}>
@@ -148,49 +211,87 @@ export default function NewSessionScreen() {
         {/* Curriculum Timeline */}
         <View style={styles.timelineSection}>
           <View style={styles.timelineHeader}>
-            <Text style={styles.sectionTitle}>CURRICULUM ROADMAP</Text>
-            <Text style={styles.timelineCount}>4 / 12 Lessons</Text>
+            <Text style={styles.sectionTitle}>ROADMAP</Text>
+            <Text style={styles.timelineCount}>{`${completedModulesCount} / ${roadmap.length} Modules Completed`}</Text>
           </View>
-
           <View style={styles.timelineList}>
-            <View style={styles.timelineItem}>
-              <View style={[styles.timelineNode, styles.timelineNodeCompleted]}>
-                <Feather name="check" size={10} color="#FFF" />
-              </View>
-              <View style={[styles.timelineLine, styles.timelineLineCompleted]} />
-              <View style={styles.timelineContent}>
-                <Text style={styles.milestoneTitle}>Hooks Fundamentals</Text>
-                <Text style={styles.milestoneDesc}>Completed \u2022 12 sessions</Text>
-              </View>
-            </View>
-
-            <View style={styles.timelineItem}>
-              <View style={[styles.timelineNode, styles.timelineNodeCurrent]}>
-                <View style={styles.timelineNodeDot} />
-              </View>
-              <View style={styles.timelineLine} />
-              <View style={styles.timelineContent}>
-                <Text style={styles.milestoneTitle}>Context API & Composition</Text>
-                <Text style={[styles.milestoneDesc, { color: '#f97316', fontWeight: 'bold' }]}>Current Objective</Text>
-              </View>
-            </View>
-
-            <View style={[styles.timelineItem, { opacity: 0.5 }]}>
-              <View style={styles.timelineNode} />
-              <View style={styles.timelineLine} />
-              <View style={styles.timelineContent}>
-                <Text style={styles.milestoneTitle}>Performance Optimization</Text>
-                <Text style={styles.milestoneDesc}>Locked \u2022 Intermediate</Text>
-              </View>
-            </View>
-
-            <View style={[styles.timelineItem, { opacity: 0.5 }]}>
-              <View style={styles.timelineNode} />
-              <View style={styles.timelineContent}>
-                <Text style={styles.milestoneTitle}>Advanced Testing Patterns</Text>
-                <Text style={styles.milestoneDesc}>Locked \u2022 Advanced</Text>
-              </View>
-            </View>
+            {roadmap.map((module) => {
+                const isExpanded = expandedNode === module.id;
+                const lessons = getLessonsByModule(module.id);
+                const completedLessons = lessons.filter(l => l.status === "completed").length;
+                
+                return (
+                   <View key={module.id} style={[styles.timelineItem, module.status === "locked" && { opacity: 0.5 }]}>
+                    {
+                      module.status === "completed" && (
+                      <>
+                        <View style={[styles.timelineNode, styles.timelineNodeCompleted]}>
+                          <Feather name="check" size={10} color="#FFF" />
+                        </View>
+                        <View style={[styles.timelineLine, styles.timelineLineCompleted]} />
+                      </>
+                      )
+                    }
+                    {
+                      module.status === "in-progress" && (
+                        <>
+                        <View style={[styles.timelineNode, styles.timelineNodeCurrent]}>
+                          <View style={styles.timelineNodeDot} />
+                        </View>
+                        <View style={styles.timelineLine} />
+                        </>
+                      )
+                    }
+                    {
+                      module.status === "locked" && (
+                        <>
+                        <View style={styles.timelineNode} />
+                        {module.id !== roadmap[roadmap.length - 1].id && <View style={styles.timelineLine} />}
+                        </>
+                      )
+                    }
+                    
+                    <View style={styles.timelineContentWrapper}>
+                      <TouchableOpacity 
+                        activeOpacity={0.7} 
+                        onPress={() => toggleNodeInfo(module.id)}
+                        style={styles.timelineContentHeader}
+                      >
+                        <View style={styles.timelineContent}>
+                          <Text style={styles.milestoneTitle}>{module.title}</Text>
+                          <Text style={[styles.milestoneDesc, module.status === "in-progress" && { color: '#f97316', fontWeight: 'bold' }]}>{module.description}</Text>
+                        </View>
+                        <View style={styles.timelineProgress}>
+                          <Text style={styles.progressText}>{completedLessons}/{lessons.length}</Text>
+                          <Feather name={isExpanded ? "chevron-up" : "chevron-down"} size={16} color="#94A3B8" />
+                        </View>
+                      </TouchableOpacity>
+                      
+                      {isExpanded && lessons.length > 0 && (
+                        <View style={styles.lessonsContainer}>
+                          {lessons.map((lesson) => (
+                            <TouchableOpacity 
+                              key={lesson.id} 
+                              style={[styles.lessonCard, lesson.status === "locked" && module.status !== "locked" && { opacity: 0.5 }]}
+                              disabled={lesson.status === "locked"}
+                              onPress={() => {
+                                if (lesson.status === "locked") return;
+                                router.push(`/topics/${id}/${lesson.id}`);
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <View style={styles.lessonInfo}>
+                                <Text style={styles.lessonTitle}>{lesson.title}</Text>
+                                <Text style={styles.lessonDesc} numberOfLines={2}>{lesson.description}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )
+            })}
           </View>
         </View>
       </ScrollView>
@@ -219,12 +320,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFF',
-  },
-  headerTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: 1,
   },
   activeStreakBadge: {
     flexDirection: 'row',
@@ -440,5 +535,58 @@ const styles = StyleSheet.create({
   milestoneDesc: {
     fontSize: 12,
     color: '#94A3B8',
+  },
+  timelineContentWrapper: {
+    flex: 1,
+    gap: 16,
+  },
+  timelineContentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  timelineProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  lessonsContainer: {
+    gap: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  lessonCard: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  lessonInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  lessonTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  lessonDesc: {
+    fontSize: 12,
+    color: '#64748B',
   },
 });
