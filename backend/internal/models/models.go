@@ -2,70 +2,125 @@ package models
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
-type User struct {
-	ID              uuid.UUID  `json:"id" db:"id"`
-	Email           string     `json:"email" db:"email"`
-	PasswordHash    string     `json:"-" db:"password_hash"`
-	Name            string     `json:"name" db:"name"`
-	StreakCount     int        `json:"streakCount" db:"streak_count"`
-	LastSessionDate *time.Time `json:"lastSessionDate" db:"last_session_date"`
-	VibePreference  string     `json:"vibePreference" db:"vibe_preference"`
-	CreatedAt       time.Time  `json:"createdAt" db:"created_at"`
+type QuestionType string
+
+const (
+	MCQ       QuestionType = "mcq"
+	TrueFalse QuestionType = "true_false"
+	FillBlank QuestionType = "fill_blank"
+	Speech    QuestionType = "speech"
+)
+
+type Status string
+
+const (
+	StatusLocked     Status = "locked"
+	StatusInProgress Status = "in-progress"
+	StatusCompleted  Status = "completed"
+)
+
+type QuizMode string
+
+const (
+	QuizModeMCQ    QuizMode = "mcq"
+	QuizModeText   QuizMode = "text"
+	QuizModeSpeech QuizMode = "speech"
+	QuizModeMixed  QuizMode = "mixed"
+)
+
+type Roadmap struct {
+	Modules []Module `json:"modules"`
 }
 
-type Topic struct {
-	ID               uuid.UUID `json:"id" db:"id"`
-	UserID           uuid.UUID `json:"userId" db:"user_id"`
-	Title            string    `json:"title" db:"title"`
-	Domain           string    `json:"domain" db:"domain"`
-	FamiliarityLevel string    `json:"familiarityLevel" db:"familiarity_level"`
-	CurrentTier      int       `json:"currentTier" db:"current_tier"`
-	CreatedAt        time.Time `json:"createdAt" db:"created_at"`
+type ProgressUpdate struct {
+	UpdatedLessons []Lesson `json:"updatedLessons"`
+	UpdatedModules []Module `json:"updatedModules"`
 }
 
-type LessonCard struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	TopicID   uuid.UUID `json:"topicId" db:"topic_id"`
+type TopicRoadmap struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Tier    int      `json:"tier"`
+	Modules []Module `json:"modules"`
+}
+
+type Module struct {
+	ID           string       `json:"id" db:"id"`
+	TopicID      string       `json:"topicId" db:"topic_id"`
+	ParentNodeID *string      `json:"parentNodeId,omitempty" db:"parent_node_id"`
+	Index        int          `json:"index" db:"index"`
+	Title        string       `json:"title" db:"title"`
+	Description  string       `json:"description" db:"description"`
+	Status       Status `json:"status" db:"status"`
+	ConceptTags  []string     `json:"concept_tags" db:"concept_tags"`
+	Lessons      []Lesson     `json:"lessons,omitempty"`
+	CreatedAt    time.Time    `json:"createdAt" db:"created_at"`
+}
+
+type Lesson struct {
+	ID        string    `json:"id" db:"id"`
+	NodeID    string    `json:"nodeId" db:"node_id"`
+	Index     int       `json:"index" db:"index"`
+	Title     string    `json:"title" db:"title"`
+	Description string    `json:"description" db:"description"`
 	Content   string    `json:"content" db:"content"`
-	Tier      int       `json:"tier" db:"tier"`
+	Status    Status    `json:"status" db:"status"`
+	Quizzes   []Question `json:"quizzes,omitempty"`
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
 }
 
 type Question struct {
-	ID            uuid.UUID   `json:"id" db:"id"`
-	TopicID       uuid.UUID   `json:"topicId" db:"topic_id"`
-	LessonCardID  *uuid.UUID  `json:"lessonCardId" db:"lesson_card_id"`
-	Format        string      `json:"format" db:"format"`
-	Content       string      `json:"content" db:"content"`
-	Options       interface{} `json:"options" db:"options"` // JSONB mapped to interface{}
-	Answer        string      `json:"answer" db:"answer"`
-	Explanation   string      `json:"explanation" db:"explanation"`
-	Tier          int         `json:"tier" db:"tier"`
-	ConceptTags   []string    `json:"conceptTags" db:"concept_tags"`
-	TimesAnswered int         `json:"timesAnswered" db:"times_answered"`
-	TimesCorrect  int         `json:"timesCorrect" db:"times_correct"`
-	CreatedAt     time.Time   `json:"createdAt" db:"created_at"`
+	ID          string       `json:"id" db:"id"`
+	NodeID      string       `json:"nodeId" db:"node_id"`
+	LessonID    *string      `json:"lessonId,omitempty" db:"lesson_id"`
+	Index       int          `json:"index" db:"index"`
+	Type        QuestionType `json:"type" db:"type"`
+	Question    string       `json:"question" db:"question"`
+	Answer      *string      `json:"answer,omitempty" db:"answer"`
+	Explanation string       `json:"explanation" db:"explanation"`
+	Options     []Option     `json:"options,omitempty"`
+	CreatedAt   time.Time    `json:"createdAt" db:"created_at"`
+}
+
+type Option struct {
+	ID           string `json:"id" db:"id"`
+	QuestionID   string `json:"questionId" db:"question_id"`
+	Index        int    `json:"index" db:"index"`
+	Label        string `json:"label" db:"label"`
+	Explanation  string `json:"explanation" db:"explanation"`
+	IsCorrect    bool   `json:"is_correct" db:"is_correct"`
+}
+
+type User struct {
+	ID              string     `json:"id" db:"id"`
+	Email           string     `json:"email" db:"email"`
+	PasswordHash    string     `json:"-" db:"password_hash"`
+	LongestStreak   int        `json:"longestStreak" db:"longest_streak"`
+	LastSessionDate *time.Time `json:"lastSessionDate,omitempty" db:"last_session_date"`
+	RefreshToken    *string    `json:"-" db:"refresh_token"`
+	CreatedAt       time.Time  `json:"createdAt" db:"created_at"`
+	DeletedAt       *time.Time `json:"deletedAt,omitempty" db:"deleted_at"`
+}
+
+type Topic struct {
+	ID        string     `json:"id" db:"id"`
+	UserID    string     `json:"userId" db:"user_id"`
+	Title     string     `json:"title" db:"title"`
+	Tier      int        `json:"tier" db:"tier"`
+	Remark    *string    `json:"remark,omitempty" db:"remark"`
+	CreatedAt time.Time  `json:"createdAt" db:"created_at"`
+	DeletedAt *time.Time `json:"deletedAt,omitempty" db:"deleted_at"`
 }
 
 type Session struct {
-	ID                uuid.UUID  `json:"id" db:"id"`
-	UserID            uuid.UUID  `json:"userId" db:"user_id"`
-	TopicID           uuid.UUID  `json:"topicId" db:"topic_id"`
-	StartedAt         time.Time  `json:"startedAt" db:"started_at"`
-	CompletedAt       *time.Time `json:"completedAt" db:"completed_at"`
-	Score             int        `json:"score" db:"score"`
-	QuestionsAnswered int        `json:"questionsAnswered" db:"questions_answered"`
-}
-
-type SessionAnswer struct {
-	ID             uuid.UUID `json:"id" db:"id"`
-	SessionID      uuid.UUID `json:"sessionId" db:"session_id"`
-	QuestionID     uuid.UUID `json:"questionId" db:"question_id"`
-	SelectedAnswer string    `json:"selectedAnswer" db:"selected_answer"`
-	IsCorrect      bool      `json:"isCorrect" db:"is_correct"`
-	AnsweredAt     time.Time `json:"answeredAt" db:"answered_at"`
+	ID          string     `json:"id" db:"id"`
+	UserID      string     `json:"userId" db:"user_id"`
+	TopicID     string     `json:"topicId" db:"topic_id"`
+	NodeID      string     `json:"nodeId" db:"node_id"`
+	QuizMode    QuizMode   `json:"quizMode" db:"quiz_mode"`
+	CreatedAt   time.Time  `json:"createdAt" db:"created_at"`
+	StartAt     time.Time  `json:"startAt" db:"start_at"`
+	CompletedAt *time.Time `json:"completedAt,omitempty" db:"completed_at"`
 }
