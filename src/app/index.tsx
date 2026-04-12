@@ -1,8 +1,6 @@
 import FloatingNavBar from '@/components/FloatingNavBar';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
-import * as SQLite from 'expo-sqlite';
-import { useCallback, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -16,9 +14,7 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createTopic, listTopics, proficiencyToApi } from '../lib/api';
-import { loadTopicsFromSQLite, upsertTopicsFromApi } from '../lib/topicsDb';
-import { Topic, useTopicsStore } from '../store/topics';
+import { createTopic, listTopics, proficiencyToApi } from '../lib/api';import { Topic, useTopicsStore } from '../store/topics';
 import { useUserStore } from '../store/user';
 
 export default function HomeScreen() {
@@ -29,8 +25,6 @@ export default function HomeScreen() {
   const addTopic = useTopicsStore(state => state.addTopic);
   const setTopics = useTopicsStore(state => state.setTopics);
   const router = useRouter();
-  const db = SQLite.useSQLiteContext();
-
   const [showModal, setShowModal] = useState(false);
   const [topicName, setTopicName] = useState('');
   const [selectedProficiency, setSelectedProficiency] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
@@ -42,51 +36,44 @@ export default function HomeScreen() {
     useCallback(() => {
       let isActive = true;
 
-      const run = async () => {
-        try {
-          const history: ('active' | 'inactive')[] = [];
-          const today = new Date();
+    const run = async () => {
+      try {
+        // TODO: Replace with actual activity history API endpoint once ready
+        // Scaffold: returning active/inactive for last 7 days arbitrarily for now
+        const mockActivity: ('active' | 'inactive')[] = [
+          'inactive', 'active', 'inactive', 'inactive', 'active', 'active', 'inactive' 
+        ];
+        if (isActive) setDbActivityHistory(mockActivity);
+      } catch (e) {
+        console.error('Error fetching activity history:', e);
+      }
 
-          for (let i = 6; i >= 0; i--) {
-            const d = new Date(today);
-            d.setDate(d.getDate() - i);
-            const dayStr = d.toISOString().split('T')[0];
-
-            const result = await db.getFirstAsync<{ count: number }>(
-              `SELECT COUNT(*) as count FROM pending_answers WHERE date(answered_at) = ?`,
-              [dayStr]
-            );
-
-            history.push(result && result.count > 0 ? 'active' : 'inactive');
-          }
-
-          if (isActive) setDbActivityHistory(history);
-        } catch (e) {
-          console.error('Error fetching activity history:', e);
-        }
-
-        try {
-          const local = await loadTopicsFromSQLite(db);
-          if (isActive) setTopics(local);
-        } catch (e) {
-          console.error('Error loading topics from SQLite:', e);
-        }
-
-          try {
-            const apiTopics = await listTopics();
-            await upsertTopicsFromApi(db, apiTopics);
-            if (isActive) setTopics(await loadTopicsFromSQLite(db));
-          } catch (e) {
-            console.warn('Topic API sync failed', e);
-          }
-      };
+      try {
+        const apiTopics = await listTopics();
+        
+        // Map ApiTopic to Topic
+        const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          currentTier: t.currentTier ?? 1,
+          familiarityLevel: t.familiarityLevel ?? 'beginner',
+          accuracyPercent: 0, // Placeholder, API should ideally return this
+          sessionsCompleted: 0, // Placeholder, API should ideally return this
+          weakConcepts: [],
+        }));
+        
+        if (isActive) setTopics(mappedTopics);
+      } catch (e) {
+        console.warn('Topic API sync failed', e);
+      }
+    };
 
       void run();
 
       return () => {
         isActive = false;
       };
-    }, [db, setTopics])
+    }, [setTopics])
   );
 
   const handleCreate = async () => {
@@ -94,12 +81,21 @@ export default function HomeScreen() {
     setIsGenerating(true);
 
     try {
-        const { topic } = await createTopic({
-          title: topicName.trim(),
-          familiarity_level: proficiencyToApi(selectedProficiency),
-        });
-        await upsertTopicsFromApi(db, [topic]);
-        setTopics(await loadTopicsFromSQLite(db));
+      const { topic: apiTopic } = await createTopic({
+        title: topicName.trim(),
+        familiarity_level: proficiencyToApi(selectedProficiency),
+      });
+      // Map and append directly
+      const newTopic: Topic = {
+          id: apiTopic.id,
+          title: apiTopic.title,
+          currentTier: apiTopic.currentTier ?? 1,
+          familiarityLevel: apiTopic.familiarityLevel ?? 'beginner',
+          accuracyPercent: 0,
+          sessionsCompleted: 0,
+          weakConcepts: [],
+      };
+      addTopic(newTopic);
       setShowModal(false);
       setTopicName('');
       setSelectedProficiency('beginner');

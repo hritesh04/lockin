@@ -1,11 +1,7 @@
 import { login } from '@/lib/api';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { SQLITE_DB_NAME } from '../lib/config';
-import { initDB } from '../lib/db';
-import { syncPendingAnswers } from '../lib/sync';
 import { useAuthStore } from '../store/auth';
 import { useUserStore } from '../store/user';
 
@@ -33,8 +29,6 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    syncPendingAnswers();
-
     // Basic auth / onboarding redirect routing
     const inOnboarding = segments[0] === 'onboarding';
 
@@ -46,13 +40,13 @@ export default function RootLayout() {
   }, [hasCompletedOnboarding, segments]);
 
   return (
-    <SQLiteProvider databaseName={SQLITE_DB_NAME} onInit={initDB}>
+    <>
       <StatusBar hidden />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#050505' } }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="stats" />
       </Stack>
-    </SQLiteProvider>
+    </>
   );
 }
