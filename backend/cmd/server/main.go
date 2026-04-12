@@ -9,7 +9,7 @@
 // @license.name  MIT
 //
 // @host      localhost:8080
-// @BasePath  /api
+// @BasePath  /api/v1
 //
 // @securityDefinitions.apikey BearerAuth
 // @in header
@@ -46,7 +46,10 @@ func main() {
 	defer db.Close()
 
 	app := fiber.New()
-	app.Use(logger.New())
+	// app.Use(logger.New())
+	app.Use(logger.New(logger.Config{
+        Format: "[${time}] ${status} - ${latency} ${method} ${path}\nReqBody: ${body}\nResBody: ${resBody}\n",
+    }))
 	// CORS middleware for mobile client
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
@@ -60,22 +63,29 @@ func main() {
 	// Swagger UI — available at /docs/index.html
 	app.Get("/docs/*", fiberSwagger.WrapHandler)
 
-	aiGen := ai.NewGenerator(db.Pool)
+	aiProviderType := os.Getenv("AI_PROVIDER")
+	provider := ai.NewAIProvider(aiProviderType)
+
+	aiGen := ai.NewGenerator(db.Pool, provider)
 
 	// Initialize Repositories
 	userRepo := repository.NewUserRepository(db.Pool)
 	topicRepo := repository.NewTopicRepository(db.Pool)
+	moduleRepo := repository.NewModuleRepository(db.Pool)
+	lessonRepo := repository.NewLessonRepository(db.Pool)
 	sessionRepo := repository.NewSessionRepository(db.Pool)
 
 	// Initialize Services
 	authService := service.NewAuthService(userRepo)
 	topicService := service.NewTopicService(topicRepo, aiGen)
+	moduleService := service.NewModuleService(moduleRepo)
+	lessonService := service.NewLessonService(lessonRepo, moduleRepo)
 	sessionService := service.NewSessionService(sessionRepo)
 
 	// Initialize API Handler
-	apiHandler := handlers.NewAPIHandler(authService, topicService, sessionService)
+	apiHandler := handlers.NewAPIHandler(authService, topicService, moduleService, lessonService, sessionService)
 
-	api := app.Group("/api")
+	api := app.Group("/api/v1")
 	authGroup := api.Group("/auth")
 	authGroup.Post("/register", apiHandler.Register)
 	authGroup.Post("/login", apiHandler.Login)
@@ -88,10 +98,17 @@ func main() {
 	topicsGroup.Get("/", apiHandler.ListTopics)
 	topicsGroup.Post("/", apiHandler.CreateTopic)
 	topicsGroup.Get("/:id", apiHandler.GetTopic)
-	topicsGroup.Get("/:id/session", apiHandler.StartSession)
+	topicsGroup.Get("/roadmap/:id", apiHandler.GetRoadmap)
+	topicsGroup.Post("/:id/session", apiHandler.StartSession)
+
+	moduleGroup := api.Group("/modules", middleware.Protected())
+	moduleGroup.Post("/status/:id", apiHandler.UpdateModuleStatus)
+
+	lessonGroup := api.Group("/lessons",middleware.Protected())
+	lessonGroup.Post("/progress/:id", apiHandler.Progress)
+
 
 	sessionsGroup := api.Group("/sessions", middleware.Protected())
-	sessionsGroup.Post("/:id/answer", apiHandler.SubmitAnswer)
 	sessionsGroup.Post("/:id/complete", apiHandler.CompleteSession)
 
 

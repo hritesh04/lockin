@@ -9,10 +9,9 @@ import (
 )
 
 type SessionRepository interface {
-	GetUnansweredQuestions(ctx context.Context, topicID uuid.UUID, limit int) ([]models.Question, error)
-	CreateSession(ctx context.Context, sessionID, userID, topicID uuid.UUID) error
-	GetQuestionInfo(ctx context.Context, questionID string) (correctAnswer, explanation, format string, err error)
-	RecordAnswerAndProgress(ctx context.Context, sessionID, questionID, selectedAnswer string, isCorrect bool) error
+	GetQuestionsByNode(ctx context.Context, nodeID uuid.UUID, limit int) ([]models.Question, error)
+	CreateSession(ctx context.Context, sessionID, userID, topicID, nodeID uuid.UUID, quizMode string) error
+	GetQuestionInfo(ctx context.Context, questionID string) (correctAnswer, explanation, qType string, err error)
 	CompleteSession(ctx context.Context, sessionID string) error
 }
 
@@ -24,11 +23,14 @@ func NewSessionRepository(db *pgxpool.Pool) SessionRepository {
 	return &sessionRepository{db: db}
 }
 
-func (r *sessionRepository) GetUnansweredQuestions(ctx context.Context, topicID uuid.UUID, limit int) ([]models.Question, error) {
+func (r *sessionRepository) GetQuestionsByNode(ctx context.Context, nodeID uuid.UUID, limit int) ([]models.Question, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, topic_id, format, content, options, answer, explanation, tier FROM questions 
-		 WHERE topic_id = $1 AND times_answered = 0 LIMIT $2`,
-		topicID, limit,
+		`SELECT q.id, q.node_id, q.lesson_id, q.index, q.type, q.question, q.answer, q.explanation, q.created_at
+		 FROM questions q
+		 WHERE q.node_id = $1
+		 ORDER BY q.index
+		 LIMIT $2`,
+		nodeID, limit,
 	)
 	if err != nil {
 		return nil, err
@@ -38,54 +40,51 @@ func (r *sessionRepository) GetUnansweredQuestions(ctx context.Context, topicID 
 	var questions []models.Question
 	for rows.Next() {
 		var q models.Question
-		rows.Scan(&q.ID, &q.TopicID, &q.Format, &q.Content, &q.Options, &q.Answer, &q.Explanation, &q.Tier)
+		if err := rows.Scan(&q.ID, &q.NodeID, &q.LessonID, &q.Index, &q.Type, &q.Question, &q.Answer, &q.Explanation, &q.CreatedAt); err != nil {
+			return nil, err
+		}
+
+		// Load options for each question
+		optRows, err := r.db.Query(ctx,
+			`SELECT id, question_id, index, label, explaination, is_correct
+			 FROM question_options
+			 WHERE question_id = $1
+			 ORDER BY index`,
+			q.ID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		for optRows.Next() {
+			var opt models.Option
+			if err := optRows.Scan(&opt.ID, &opt.QuestionID, &opt.Index, &opt.Label, &opt.Explanation, &opt.IsCorrect); err != nil {
+				optRows.Close()
+				return nil, err
+			}
+			q.Options = append(q.Options, opt)
+		}
+		optRows.Close()
+
 		questions = append(questions, q)
 	}
 	return questions, nil
 }
 
-func (r *sessionRepository) CreateSession(ctx context.Context, sessionID, userID, topicID uuid.UUID) error {
+func (r *sessionRepository) CreateSession(ctx context.Context, sessionID, userID, topicID, nodeID uuid.UUID, quizMode string) error {
 	_, err := r.db.Exec(ctx,
-		"INSERT INTO sessions (id, user_id, topic_id) VALUES ($1, $2, $3)",
-		sessionID, userID, topicID,
+		"INSERT INTO sessions (id, user_id, topic_id, node_id, quiz_mode) VALUES ($1, $2, $3, $4, $5)",
+		sessionID, userID, topicID, nodeID, quizMode,
 	)
 	return err
 }
 
 func (r *sessionRepository) GetQuestionInfo(ctx context.Context, questionID string) (string, string, string, error) {
-	var correct, explanation, format string
+	var correct, explanation, qType string
 	err := r.db.QueryRow(ctx,
-		"SELECT answer, explanation, format FROM questions WHERE id = $1", questionID,
-	).Scan(&correct, &explanation, &format)
-	return correct, explanation, format, err
-}
-
-func (r *sessionRepository) RecordAnswerAndProgress(ctx context.Context, sessionID, questionID, selectedAnswer string, isCorrect bool) error {
-	// Let's use a transaction to ensure both operations succeed or fail together
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	_, err = tx.Exec(ctx,
-		"INSERT INTO session_answers (session_id, question_id, selected_answer, is_correct) VALUES ($1, $2, $3, $4)",
-		sessionID, questionID, selectedAnswer, isCorrect,
-	)
-	if err != nil {
-		return err
-	}
-
-	if isCorrect {
-		_, err = tx.Exec(ctx, "UPDATE questions SET times_answered = times_answered + 1, times_correct = times_correct + 1 WHERE id = $1", questionID)
-	} else {
-		_, err = tx.Exec(ctx, "UPDATE questions SET times_answered = times_answered + 1 WHERE id = $1", questionID)
-	}
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+		"SELECT COALESCE(answer, ''), explanation, type FROM questions WHERE id = $1", questionID,
+	).Scan(&correct, &explanation, &qType)
+	return correct, explanation, qType, err
 }
 
 func (r *sessionRepository) CompleteSession(ctx context.Context, sessionID string) error {

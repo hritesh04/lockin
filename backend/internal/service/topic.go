@@ -2,59 +2,94 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/acerowl/lockin/backend/internal/models"
-	"github.com/acerowl/lockin/backend/internal/repository"
 	"github.com/google/uuid"
 )
 
 // AIGenerator defines the behavior required for AI operations
 type AIGenerator interface {
-	GenerateAndStoreBatch(ctx context.Context, topicID uuid.UUID, title, domain, familiarity string, tier int, weakConceptTags []string) error
+	GenerateRoadmap(ctx context.Context, id string, title string, proficiency string) error
+	GenerateQuiz(ctx context.Context, id string, title string, proficiency string)
 }
 
-type TopicService interface {
-	CreateTopic(ctx context.Context, userID uuid.UUID, title, domain, familiarityLevel string) (models.Topic, error)
-	ListTopics(ctx context.Context, userID uuid.UUID) ([]models.Topic, error)
-	GetTopic(ctx context.Context, topicID, userID string) (models.Topic, error)
+
+
+type TopicRepository interface {
+	Create(ctx context.Context, topic models.Topic) error
+	GetAll(ctx context.Context, userID uuid.UUID) ([]models.Topic, error)
+	GetByID(ctx context.Context, topicID, userID string) (models.Topic, error)
+	IsUserTopic(ctx context.Context, userID, topicID string) bool
+	GetRoadmap(ctx context.Context, topicID, userID string) (*models.TopicRoadmap, error)
 }
+
+
 
 type topicService struct {
-	repo  repository.TopicRepository
+	repo  TopicRepository
 	aiGen AIGenerator
 }
 
-func NewTopicService(r repository.TopicRepository, aiGen AIGenerator) TopicService {
+func NewTopicService(r TopicRepository, aiGen AIGenerator) *topicService {
 	return &topicService{repo: r, aiGen: aiGen}
 }
 
-func (s *topicService) CreateTopic(ctx context.Context, userID uuid.UUID, title, domain, familiarityLevel string) (models.Topic, error) {
+// familiarityToTier maps the familiarity level to an initial tier value.
+// The tier will be updated by AI after roadmap/quiz generation.
+func familiarityToTier(level string) int {
+	switch level {
+	case "beginner":
+		return 1
+	case "intermediate":
+		return 4
+	case "advanced":
+		return 7
+	default:
+		return 1
+	}
+}
+
+func (s *topicService) CreateTopic(ctx context.Context, userID string, title string, familiarityLevel string) (models.Topic, error) {
+	tier := familiarityToTier(familiarityLevel)
+
 	topic := models.Topic{
-		ID:               uuid.New(),
-		UserID:           userID,
-		Title:            title,
-		Domain:           domain,
-		FamiliarityLevel: familiarityLevel,
-		CurrentTier:      1,
+		ID:     uuid.NewString(),
+		UserID: userID,
+		Title:  title,
+		Tier:   tier,
 	}
 
-	err := s.repo.CreateTopic(ctx, topic)
+	err := s.repo.Create(ctx, topic)
 	if err != nil {
 		return models.Topic{}, err
 	}
 
-	// Trigger async generation
-	go func(tID uuid.UUID, tTitle, tDomain, tFam string, tTier int) {
-		_ = s.aiGen.GenerateAndStoreBatch(context.Background(), tID, tTitle, tDomain, tFam, tTier, []string{})
-	}(topic.ID, topic.Title, topic.Domain, topic.FamiliarityLevel, topic.CurrentTier)
+	// Always generate roadmap first; AI response will update the tier
+	go s.aiGen.GenerateRoadmap(context.Background(), topic.ID, title, familiarityLevel)
 
 	return topic, nil
 }
 
 func (s *topicService) ListTopics(ctx context.Context, userID uuid.UUID) ([]models.Topic, error) {
-	return s.repo.ListTopics(ctx, userID)
+	return s.repo.GetAll(ctx, userID)
 }
 
 func (s *topicService) GetTopic(ctx context.Context, topicID, userID string) (models.Topic, error) {
-	return s.repo.GetTopic(ctx, topicID, userID)
+	topic, err := s.repo.GetByID(ctx, topicID, userID)
+	if err != nil {
+		return models.Topic{}, err
+	}
+	return topic, nil
+}
+
+func (s *topicService) GetRoadmap(ctx context.Context, topicID, userID string) (*models.TopicRoadmap, error) {
+	if userTopic := s.repo.IsUserTopic(ctx, userID, topicID); !userTopic {
+		return nil, fmt.Errorf("invalid topic id")
+	}
+	roadmap, err := s.repo.GetRoadmap(ctx, topicID, userID)
+	if err != nil {
+		return nil, err
+	}
+	return roadmap, nil
 }

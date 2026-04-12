@@ -7,38 +7,35 @@ import (
 	"github.com/acerowl/lockin/backend/internal/lib"
 	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/acerowl/lockin/backend/internal/repository"
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
-
-type AuthService interface {
-	Register(ctx context.Context, email, password, name string) (string, string, models.User, error)
-	Login(ctx context.Context, email, password string) (string, string, models.User, error)
-	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
-	GetMe(ctx context.Context, userID string) (models.User, error)
-}
 
 type authService struct {
 	repo repository.UserRepository
 }
 
-func NewAuthService(r repository.UserRepository) AuthService {
+func NewAuthService(r repository.UserRepository) *authService {
 	return &authService{repo: r}
 }
 
-func (s *authService) Register(ctx context.Context, email, password, name string) (string, string, models.User, error) {
+func (s *authService) Register(ctx context.Context, email, password string) (string, string, models.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
 		return "", "", models.User{}, err
 	}
 
-	user, err := s.repo.CreateUser(ctx, email, string(hash), name)
+	user, err := s.repo.CreateUser(ctx, email, string(hash))
 	if err != nil {
 		return "", "", models.User{}, err
 	}
 
 	token, _ := lib.GenerateToken(user.ID)
 	refreshToken, _ := lib.GenerateRefreshToken(user.ID)
+
+	if err := s.repo.SaveRefreshToken(ctx, user.ID, refreshToken); err != nil {
+		return "", "", models.User{}, err
+	}
+
 	return token, refreshToken, user, nil
 }
 
@@ -54,22 +51,32 @@ func (s *authService) Login(ctx context.Context, email, password string) (string
 
 	token, _ := lib.GenerateToken(user.ID)
 	refreshToken, _ := lib.GenerateRefreshToken(user.ID)
+
+	if err := s.repo.SaveRefreshToken(ctx, user.ID, refreshToken); err != nil {
+		return "", "", models.User{}, err
+	}
+
 	return token, refreshToken, user, nil
 }
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
-	userIDStr, err := lib.ValidateToken(refreshToken)
+	userID, err := lib.ValidateToken(refreshToken)
 	if err != nil {
 		return "", "", errors.New("invalid or expired refresh token")
 	}
 
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return "", "", errors.New("invalid user ID in token")
+	valid, err := s.repo.CheckUserRefreshToken(ctx, userID, refreshToken)
+	if err != nil || !valid {
+		return "", "", errors.New("invalid or expired refresh token")
 	}
 
 	newToken, _ := lib.GenerateToken(userID)
 	newRefreshToken, _ := lib.GenerateRefreshToken(userID)
+
+	if err := s.repo.SaveRefreshToken(ctx, userID, newRefreshToken); err != nil {
+		return "", "", err
+	}
+
 	return newToken, newRefreshToken, nil
 }
 

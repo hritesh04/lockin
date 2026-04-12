@@ -1,15 +1,49 @@
 package handlers
 
 import (
-	"github.com/acerowl/lockin/backend/internal/service"
+	"context"
+
+	"github.com/acerowl/lockin/backend/internal/models"
+	"github.com/google/uuid"
 )
 
-type APIHandler struct {
-	Auth    service.AuthService
-	Topic   service.TopicService
-	Session service.SessionService
+type ModuleService interface {
+	UpdateStatus(ctx context.Context, moduleID string, status string) (*models.Module, error)
+	GetByID(ctx context.Context, moduleID string) (*models.Module, error)
+	UpdateByTopicID(ctx context.Context, topicID string, index int, status string) (*models.Module, error)
 }
 
-func NewAPIHandler(auth service.AuthService, topic service.TopicService, session service.SessionService) *APIHandler {
-	return &APIHandler{Auth: auth, Topic: topic, Session: session}
+type LessonService interface {
+	Progress(ctx context.Context, lessonID string) (*models.ProgressUpdate, error)
+}
+
+type AuthService interface {
+	Register(ctx context.Context, email, password string) (string, string, models.User, error)
+	Login(ctx context.Context, email, password string) (string, string, models.User, error)
+	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
+	GetMe(ctx context.Context, userID string) (models.User, error)
+}
+
+type TopicService interface {
+	CreateTopic(ctx context.Context, userID string, title string, familiarityLevel string) (models.Topic, error)
+	ListTopics(ctx context.Context, userID uuid.UUID) ([]models.Topic, error)
+	GetTopic(ctx context.Context, topicID, userID string) (models.Topic, error)
+	GetRoadmap(ctx context.Context, topicID, userID string) (*models.TopicRoadmap, error)
+}
+
+type SessionService interface {
+	StartSession(ctx context.Context, topicID, nodeID, userID uuid.UUID, quizMode string) (uuid.UUID, []models.Question, error)
+	CompleteSession(ctx context.Context, sessionID string) error
+}
+
+type APIHandler struct {
+	Auth    AuthService
+	Topic   TopicService
+	Session SessionService
+	Module  ModuleService
+	Lesson  LessonService
+}
+
+func NewAPIHandler(auth AuthService, topic TopicService, module ModuleService, lesson LessonService, session SessionService) *APIHandler {
+	return &APIHandler{Auth: auth, Topic: topic, Session: session, Module: module, Lesson: lesson}
 }
