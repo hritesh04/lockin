@@ -2,6 +2,8 @@ import axios, { AxiosError } from 'axios';
 import { useAuthStore } from '../store/auth';
 import type { Question } from '../store/session';
 import { API_BASE_URL } from './config';
+import type { Module } from '../store/modules';
+import type { Lesson } from '../store/lessons';
 
 export type ApiUser = {
   id: string;
@@ -29,6 +31,11 @@ export type SubmitAnswerResponse = {
   explanation: string;
 };
 
+export type ProgressUpdateResponse = {
+  updatedLessons: Lesson[];
+  updatedModules: Module[];
+};
+
 type ApiQuestionRaw = {
   id: string;
   topicId?: string;
@@ -49,8 +56,8 @@ export function proficiencyToApi(level: 'beginner' | 'intermediate' | 'advanced'
   }
 }
 
-function parseOptions(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.map(String);
+function parseOptions(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
   return [];
 }
 
@@ -62,7 +69,7 @@ export function mapSessionQuestion(q: ApiQuestionRaw): Question {
   return {
     id: q.id,
     format: safeFormat,
-    content: q.content,
+    question: q.content,
     options: parseOptions(q.options),
     answer: q.answer ?? '',
     explanation: q.explanation ?? '',
@@ -70,7 +77,7 @@ export function mapSessionQuestion(q: ApiQuestionRaw): Question {
 }
 
 export const apiClient = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
+  baseURL: `${API_BASE_URL}/api/v1`,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -133,7 +140,7 @@ apiClient.interceptors.response.use(
 
     try {
       const { data } = await axios.post<{ success: boolean; data: { token: string; refresh_token: string } }>(
-        `${API_BASE_URL}/api/auth/refresh`,
+        `${API_BASE_URL}/auth/refresh`,
         { refresh_token: refreshToken },
         { headers: { 'Content-Type': 'application/json' } }
       );
@@ -209,4 +216,16 @@ export async function submitAnswer(
 
 export async function completeSession(sessionId: string): Promise<void> {
   await apiClient.post(`/sessions/${sessionId}/complete`);
+}
+
+export async function updateModuleStatus(moduleId: string, status: string): Promise<void> {
+  await apiClient.post(`/modules/status/${moduleId}`, { status });
+}
+
+export async function updateProgress(lessonId: string): Promise<ProgressUpdateResponse> {
+  const { data } = await apiClient.post<{ success: boolean; data: ProgressUpdateResponse }>(`/lessons/progress/${lessonId}`);
+  if (!data.success){
+    throw new Error("Failed to update progress");
+  }
+  return data.data;
 }

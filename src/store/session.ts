@@ -1,10 +1,19 @@
 import { create } from 'zustand';
 
+export interface Option {
+  id: string;
+  question_id:string;
+  index: number;
+  label: string;
+  explanation:string;
+  is_correct: boolean;
+}
+
 export interface Question {
   id: string;
   format: 'mcq' | 'true_false' | 'text' | 'speech';
-  content: string;
-  options: string[];
+  question: string;
+  options: Option[];
   answer: string;
   explanation: string;
 }
