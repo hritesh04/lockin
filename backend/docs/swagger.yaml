@@ -1,23 +1,229 @@
-basePath: /api
+basePath: /api/v1
 definitions:
-  internal_handlers.AnswerReq:
+  github_com_acerowl_lockin_backend_internal_models.Lesson:
     properties:
-      question_id:
-        example: 550e8400-e29b-41d4-a716-446655440000
+      content:
         type: string
-      selected_answer:
-        example: A
+      createdAt:
         type: string
+      description:
+        type: string
+      id:
+        type: string
+      index:
+        type: integer
+      nodeId:
+        type: string
+      quizzes:
+        items:
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Question'
+        type: array
+      status:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Status'
+      title:
+        type: string
+    type: object
+  github_com_acerowl_lockin_backend_internal_models.Module:
+    properties:
+      concept_tags:
+        items:
+          type: string
+        type: array
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      index:
+        type: integer
+      lessons:
+        items:
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Lesson'
+        type: array
+      parentNodeId:
+        type: string
+      status:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Status'
+      title:
+        type: string
+      topicId:
+        type: string
+    type: object
+  github_com_acerowl_lockin_backend_internal_models.Option:
+    properties:
+      explanation:
+        type: string
+      id:
+        type: string
+      index:
+        type: integer
+      is_correct:
+        type: boolean
+      label:
+        type: string
+      questionId:
+        type: string
+    type: object
+  github_com_acerowl_lockin_backend_internal_models.Question:
+    properties:
+      answer:
+        type: string
+      createdAt:
+        type: string
+      explanation:
+        type: string
+      id:
+        type: string
+      index:
+        type: integer
+      lessonId:
+        type: string
+      nodeId:
+        type: string
+      options:
+        items:
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Option'
+        type: array
+      question:
+        type: string
+      type:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.QuestionType'
+    type: object
+  github_com_acerowl_lockin_backend_internal_models.QuestionType:
+    enum:
+    - mcq
+    - true_false
+    - fill_blank
+    - speech
+    type: string
+    x-enum-varnames:
+    - MCQ
+    - TrueFalse
+    - FillBlank
+    - Speech
+  github_com_acerowl_lockin_backend_internal_models.Status:
+    enum:
+    - locked
+    - in-progress
+    - completed
+    type: string
+    x-enum-varnames:
+    - StatusLocked
+    - StatusInProgress
+    - StatusCompleted
+  github_com_acerowl_lockin_backend_internal_models.Topic:
+    properties:
+      createdAt:
+        type: string
+      deletedAt:
+        type: string
+      id:
+        type: string
+      remark:
+        type: string
+      tier:
+        type: integer
+      title:
+        type: string
+      userId:
+        type: string
+    type: object
+  github_com_acerowl_lockin_backend_internal_models.TopicRoadmap:
+    properties:
+      id:
+        type: string
+      modules:
+        items:
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Module'
+        type: array
+      tier:
+        type: integer
+      title:
+        type: string
+    type: object
+  github_com_acerowl_lockin_backend_internal_models.User:
+    properties:
+      createdAt:
+        type: string
+      deletedAt:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      lastSessionDate:
+        type: string
+      longestStreak:
+        type: integer
+    type: object
+  internal_handlers.AuthTokenData:
+    properties:
+      refresh_token:
+        example: eyJhbGciOiJIUzI1NiIs...
+        type: string
+      token:
+        example: eyJhbGciOiJIUzI1NiIs...
+        type: string
+      user:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.User'
+    type: object
+  internal_handlers.AuthTokenResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers.AuthTokenData'
+      success:
+        example: true
+        type: boolean
+    type: object
+  internal_handlers.CompleteSessionData:
+    properties:
+      status:
+        example: completed
+        type: string
+    type: object
+  internal_handlers.CompleteSessionResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers.CompleteSessionData'
+      success:
+        example: true
+        type: boolean
+    type: object
+  internal_handlers.CreateTopicData:
+    properties:
+      status:
+        example: generating
+        type: string
+      topic:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Topic'
     type: object
   internal_handlers.CreateTopicReq:
     properties:
       familiarity_level:
-        description: beginner, some_exposure, basics
+        description: beginner, intermediate, advanced
         example: beginner
         type: string
       title:
         example: Quantum Mechanics
         type: string
+    type: object
+  internal_handlers.CreateTopicResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers.CreateTopicData'
+      success:
+        example: true
+        type: boolean
+    type: object
+  internal_handlers.ErrorResponse:
+    properties:
+      error:
+        example: something went wrong
+        type: string
+      success:
+        example: false
+        type: boolean
     type: object
   internal_handlers.LoginReq:
     properties:
@@ -31,19 +237,101 @@ definitions:
   internal_handlers.RefreshReq:
     properties:
       refresh_token:
+        example: eyJhbGciOiJIUzI1NiIs...
         type: string
+    type: object
+  internal_handlers.RefreshTokenData:
+    properties:
+      refresh_token:
+        example: eyJhbGciOiJIUzI1NiIs...
+        type: string
+      token:
+        example: eyJhbGciOiJIUzI1NiIs...
+        type: string
+    type: object
+  internal_handlers.RefreshTokenResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers.RefreshTokenData'
+      success:
+        example: true
+        type: boolean
     type: object
   internal_handlers.RegisterReq:
     properties:
       email:
         example: user@example.com
         type: string
-      name:
-        example: Alice
-        type: string
       password:
         example: supersecret
         type: string
+    type: object
+  internal_handlers.RoadmapResponse:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.TopicRoadmap'
+      success:
+        example: true
+        type: boolean
+    type: object
+  internal_handlers.StartSessionData:
+    properties:
+      questions:
+        items:
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Question'
+        type: array
+      session_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
+  internal_handlers.StartSessionReq:
+    properties:
+      node_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      quiz_mode:
+        description: mcq, text, speech, mixed
+        example: mcq
+        type: string
+    type: object
+  internal_handlers.StartSessionResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers.StartSessionData'
+      success:
+        example: true
+        type: boolean
+    type: object
+  internal_handlers.TopicListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Topic'
+        type: array
+      success:
+        example: true
+        type: boolean
+    type: object
+  internal_handlers.TopicResponse:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Topic'
+      success:
+        example: true
+        type: boolean
+    type: object
+  internal_handlers.UpdateStatusReq:
+    properties:
+      status:
+        type: string
+    type: object
+  internal_handlers.UserResponse:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.User'
+      success:
+        example: true
+        type: boolean
     type: object
 host: localhost:8080
 info:
@@ -74,20 +362,17 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Tokens and user profile
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.AuthTokenResponse'
         "400":
-          description: Bad Request
+          description: Invalid request payload
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
         "401":
-          description: Unauthorized
+          description: Invalid credentials
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       summary: Login
       tags:
       - auth
@@ -108,20 +393,17 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: New token pair
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.RefreshTokenResponse'
         "400":
-          description: Bad Request
+          description: Invalid request payload
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
         "401":
-          description: Unauthorized
+          description: Invalid or expired refresh token
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       summary: Refresh access token
       tags:
       - auth
@@ -141,67 +423,68 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Tokens and user profile
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.AuthTokenResponse'
         "400":
-          description: Bad Request
+          description: Validation or registration error
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       summary: Register a new user
       tags:
       - auth
-  /sessions/{id}/answer:
+  /lessons/progress/{id}:
     post:
       consumes:
       - application/json
-      description: Records the user's answer for a question and returns correctness
-        feedback
+      description: Updates the status of a specific lesson, automatically cascading
+        unlocks for next items if status is "completed"
       parameters:
-      - description: Session UUID
+      - description: Lesson UUID
         in: path
         name: id
         required: true
         type: string
-      - description: Answer payload
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Update lesson status
+      tags:
+      - lessons
+  /modules/status/{id}:
+    post:
+      consumes:
+      - application/json
+      description: Updates the status of a specific module
+      parameters:
+      - description: Module UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status payload
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_handlers.AnswerReq'
+          $ref: '#/definitions/internal_handlers.UpdateStatusReq'
       produces:
       - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties: true
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties: true
-            type: object
+      responses: {}
       security:
       - BearerAuth: []
-      summary: Submit an answer
+      summary: Update module status
       tags:
-      - sessions
+      - modules
   /sessions/{id}/complete:
     post:
-      description: Marks a session as completed
+      description: Marks a quiz session as completed by setting the completed_at timestamp
       parameters:
       - description: Session UUID
         in: path
@@ -212,15 +495,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Completion confirmation
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.CompleteSessionResponse'
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Complete a session
@@ -228,20 +509,19 @@ paths:
       - sessions
   /topics:
     get:
-      description: Returns all topics for the authenticated user
+      description: Returns all topics for the authenticated user, ordered by creation
+        date (newest first)
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Array of user topics
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.TopicListResponse'
         "500":
-          description: Internal Server Error
+          description: Database error
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List topics
@@ -250,7 +530,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Creates a new learning topic and triggers async question generation
+      description: Creates a new learning topic. An initial tier is assigned based
+        on familiarity_level (beginner=1, intermediate=4, advanced=7). After AI generates
+        the roadmap, the tier is updated based on the AI response.
       parameters:
       - description: Topic payload
         in: body
@@ -262,20 +544,17 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Created topic with generation status
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.CreateTopicResponse'
         "400":
-          description: Bad Request
+          description: Validation error
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Create a topic
@@ -283,7 +562,7 @@ paths:
       - topics
   /topics/{id}:
     get:
-      description: Fetches a single topic by ID
+      description: Fetches a single topic by ID for the authenticated user
       parameters:
       - description: Topic UUID
         in: path
@@ -294,24 +573,59 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Topic details
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.TopicResponse'
         "404":
-          description: Not Found
+          description: Topic not found
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get a topic
       tags:
       - topics
   /topics/{id}/session:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new quiz session for a module node under a topic. Fetches
+        up to 10 questions with their options.
+      parameters:
+      - description: Topic UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session configuration
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.StartSessionReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session ID and questions
+          schema:
+            $ref: '#/definitions/internal_handlers.StartSessionResponse'
+        "400":
+          description: Invalid input or not enough questions
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Start a quiz session
+      tags:
+      - sessions
+  /topics/roadmap/{id}:
     get:
-      description: Fetches up to 10 unanswered questions for a topic and creates a
-        new session
+      description: Fetches the learning roadmap (modules and lessons) for a topic
       parameters:
       - description: Topic UUID
         in: path
@@ -322,25 +636,18 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Roadmap with modules
           schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad Request
+            $ref: '#/definitions/internal_handlers.RoadmapResponse'
+        "404":
+          description: Topic or roadmap not found
           schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Start a session
+      summary: Get roadmap of a topic
       tags:
-      - sessions
+      - topics
   /users/me:
     get:
       description: Returns the profile of the authenticated user
@@ -348,15 +655,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: User profile
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.UserResponse'
         "404":
-          description: Not Found
+          description: User not found
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get current user

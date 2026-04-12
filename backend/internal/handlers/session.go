@@ -5,24 +5,47 @@ import (
 	"github.com/google/uuid"
 )
 
+// StartSessionReq is the request body for starting a session
+type StartSessionReq struct {
+	NodeID   string `json:"node_id"   example:"550e8400-e29b-41d4-a716-446655440000"`
+	QuizMode string `json:"quiz_mode" example:"mcq"` // mcq, text, speech, mixed
+}
+
 // StartSession godoc
-// @Summary      Start a session
-// @Description  Fetches up to 10 unanswered questions for a topic and creates a new session
+// @Summary      Start a quiz session
+// @Description  Creates a new quiz session for a module node under a topic. Fetches up to 10 questions with their options.
 // @Tags         sessions
+// @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Param        id   path      string  true  "Topic UUID"
-// @Success      200  {object}  map[string]interface{}
-// @Failure      400  {object}  map[string]interface{}
-// @Failure      500  {object}  map[string]interface{}
-// @Router       /topics/{id}/session [get]
+// @Param        id    path      string               true  "Topic UUID"
+// @Param        body  body      StartSessionReq      true  "Session configuration"
+// @Success      200   {object}  StartSessionResponse  "Session ID and questions"
+// @Failure      400   {object}  ErrorResponse         "Invalid input or not enough questions"
+// @Failure      500   {object}  ErrorResponse         "Internal server error"
+// @Router       /topics/{id}/session [post]
 func (h *APIHandler) StartSession(c *fiber.Ctx) error {
 	topicID := c.Params("id")
 	userIDStr := c.Locals("user_id").(string)
 	userID, _ := uuid.Parse(userIDStr)
 	tID, _ := uuid.Parse(topicID)
 
-	sessionID, questions, err := h.Session.StartSession(c.Context(), tID, userID)
+	var req StartSessionReq
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
+	}
+
+	nodeID, err := uuid.Parse(req.NodeID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid node_id"})
+	}
+
+	quizMode := req.QuizMode
+	if quizMode == "" {
+		quizMode = "mcq"
+	}
+
+	sessionID, questions, err := h.Session.StartSession(c.Context(), tID, nodeID, userID, quizMode)
 	if err != nil {
 		if err.Error() == "Not enough questions. Generation might be pending." {
 			return c.Status(400).JSON(fiber.Map{"success": false, "error": err.Error()})
@@ -39,59 +62,15 @@ func (h *APIHandler) StartSession(c *fiber.Ctx) error {
 	})
 }
 
-// AnswerReq is the request body for submitting an answer
-type AnswerReq struct {
-	QuestionID     string `json:"question_id"      example:"550e8400-e29b-41d4-a716-446655440000"`
-	SelectedAnswer string `json:"selected_answer"  example:"A"`
-}
-
-// SubmitAnswer godoc
-// @Summary      Submit an answer
-// @Description  Records the user's answer for a question and returns correctness feedback
-// @Tags         sessions
-// @Accept       json
-// @Produce      json
-// @Security     BearerAuth
-// @Param        id    path      string     true  "Session UUID"
-// @Param        body  body      AnswerReq  true  "Answer payload"
-// @Success      200   {object}  map[string]interface{}
-// @Failure      400   {object}  map[string]interface{}
-// @Failure      404   {object}  map[string]interface{}
-// @Router       /sessions/{id}/answer [post]
-func (h *APIHandler) SubmitAnswer(c *fiber.Ctx) error {
-	sessionID := c.Params("id")
-	var req AnswerReq
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid payload"})
-	}
-
-	isCorrect, correct, explanation, err := h.Session.SubmitAnswer(c.Context(), sessionID, req.QuestionID, req.SelectedAnswer)
-	if err != nil {
-		if err.Error() == "Question not found" {
-			return c.Status(404).JSON(fiber.Map{"success": false, "error": "Question not found"})
-		}
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": err.Error()})
-	}
-
-	return c.JSON(fiber.Map{
-		"success": true,
-		"data": fiber.Map{
-			"is_correct":     isCorrect,
-			"correct_answer": correct,
-			"explanation":    explanation,
-		},
-	})
-}
-
 // CompleteSession godoc
 // @Summary      Complete a session
-// @Description  Marks a session as completed
+// @Description  Marks a quiz session as completed by setting the completed_at timestamp
 // @Tags         sessions
 // @Produce      json
 // @Security     BearerAuth
-// @Param        id   path      string  true  "Session UUID"
-// @Success      200  {object}  map[string]interface{}
-// @Failure      500  {object}  map[string]interface{}
+// @Param        id   path      string                   true  "Session UUID"
+// @Success      200  {object}  CompleteSessionResponse   "Completion confirmation"
+// @Failure      500  {object}  ErrorResponse             "Internal server error"
 // @Router       /sessions/{id}/complete [post]
 func (h *APIHandler) CompleteSession(c *fiber.Ctx) error {
 	sessionID := c.Params("id")

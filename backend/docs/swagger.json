@@ -14,7 +14,7 @@
         "version": "1.0"
     },
     "host": "localhost:8080",
-    "basePath": "/api",
+    "basePath": "/api/v1",
     "paths": {
         "/auth/login": {
             "post": {
@@ -42,24 +42,21 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Tokens and user profile",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.AuthTokenResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request payload",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "Invalid credentials",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
@@ -91,24 +88,21 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "New token pair",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.RefreshTokenResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request payload",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "Invalid or expired refresh token",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
@@ -140,37 +134,34 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Tokens and user profile",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.AuthTokenResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Validation or registration error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/sessions/{id}/answer": {
+        "/lessons/progress/{id}": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Records the user's answer for a question and returns correctness feedback",
+                "description": "Updates the status of a specific lesson, automatically cascading unlocks for next items if status is \"completed\"",
                 "consumes": [
                     "application/json"
                 ],
@@ -178,50 +169,58 @@
                     "application/json"
                 ],
                 "tags": [
-                    "sessions"
+                    "lessons"
                 ],
-                "summary": "Submit an answer",
+                "summary": "Update lesson status",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Session UUID",
+                        "description": "Lesson UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/modules/status/{id}": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the status of a specific module",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Update module status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module UUID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Answer payload",
+                        "description": "Status payload",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.AnswerReq"
+                            "$ref": "#/definitions/internal_handlers.UpdateStatusReq"
                         }
                     }
                 ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
+                "responses": {}
             }
         },
         "/sessions/{id}/complete": {
@@ -231,7 +230,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Marks a session as completed",
+                "description": "Marks a quiz session as completed by setting the completed_at timestamp",
                 "produces": [
                     "application/json"
                 ],
@@ -250,17 +249,15 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Completion confirmation",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.CompleteSessionResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
@@ -273,7 +270,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns all topics for the authenticated user",
+                "description": "Returns all topics for the authenticated user, ordered by creation date (newest first)",
                 "produces": [
                     "application/json"
                 ],
@@ -283,17 +280,15 @@
                 "summary": "List topics",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Array of user topics",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.TopicListResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Database error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
@@ -304,7 +299,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a new learning topic and triggers async question generation",
+                "description": "Creates a new learning topic. An initial tier is assigned based on familiarity_level (beginner=1, intermediate=4, advanced=7). After AI generates the roadmap, the tier is updated based on the AI response.",
                 "consumes": [
                     "application/json"
                 ],
@@ -328,24 +323,61 @@
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "Created topic with generation status",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.CreateTopicResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Validation error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/topics/roadmap/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Fetches the learning roadmap (modules and lessons) for a topic",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "topics"
+                ],
+                "summary": "Get roadmap of a topic",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Roadmap with modules",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.RoadmapResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Topic or roadmap not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
@@ -358,7 +390,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Fetches a single topic by ID",
+                "description": "Fetches a single topic by ID for the authenticated user",
                 "produces": [
                     "application/json"
                 ],
@@ -377,37 +409,38 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Topic details",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.TopicResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Topic not found",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
             }
         },
         "/topics/{id}/session": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Fetches up to 10 unanswered questions for a topic and creates a new session",
+                "description": "Creates a new quiz session for a module node under a topic. Fetches up to 10 questions with their options.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "sessions"
                 ],
-                "summary": "Start a session",
+                "summary": "Start a quiz session",
                 "parameters": [
                     {
                         "type": "string",
@@ -415,28 +448,34 @@
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Session configuration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.StartSessionReq"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Session ID and questions",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.StartSessionResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid input or not enough questions",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
@@ -459,17 +498,15 @@
                 "summary": "Get current user",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "User profile",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.UserResponse"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "User not found",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     }
                 }
@@ -477,16 +514,298 @@
         }
     },
     "definitions": {
-        "internal_handlers.AnswerReq": {
+        "github_com_acerowl_lockin_backend_internal_models.Lesson": {
             "type": "object",
             "properties": {
-                "question_id": {
-                    "type": "string",
-                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                "content": {
+                    "type": "string"
                 },
-                "selected_answer": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "nodeId": {
+                    "type": "string"
+                },
+                "quizzes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Question"
+                    }
+                },
+                "status": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Status"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_acerowl_lockin_backend_internal_models.Module": {
+            "type": "object",
+            "properties": {
+                "concept_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "lessons": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Lesson"
+                    }
+                },
+                "parentNodeId": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Status"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "topicId": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_acerowl_lockin_backend_internal_models.Option": {
+            "type": "object",
+            "properties": {
+                "explanation": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "is_correct": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "questionId": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_acerowl_lockin_backend_internal_models.Question": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "explanation": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "lessonId": {
+                    "type": "string"
+                },
+                "nodeId": {
+                    "type": "string"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Option"
+                    }
+                },
+                "question": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.QuestionType"
+                }
+            }
+        },
+        "github_com_acerowl_lockin_backend_internal_models.QuestionType": {
+            "type": "string",
+            "enum": [
+                "mcq",
+                "true_false",
+                "fill_blank",
+                "speech"
+            ],
+            "x-enum-varnames": [
+                "MCQ",
+                "TrueFalse",
+                "FillBlank",
+                "Speech"
+            ]
+        },
+        "github_com_acerowl_lockin_backend_internal_models.Status": {
+            "type": "string",
+            "enum": [
+                "locked",
+                "in-progress",
+                "completed"
+            ],
+            "x-enum-varnames": [
+                "StatusLocked",
+                "StatusInProgress",
+                "StatusCompleted"
+            ]
+        },
+        "github_com_acerowl_lockin_backend_internal_models.Topic": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "tier": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_acerowl_lockin_backend_internal_models.TopicRoadmap": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "modules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Module"
+                    }
+                },
+                "tier": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_acerowl_lockin_backend_internal_models.User": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lastSessionDate": {
+                    "type": "string"
+                },
+                "longestStreak": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handlers.AuthTokenData": {
+            "type": "object",
+            "properties": {
+                "refresh_token": {
                     "type": "string",
-                    "example": "A"
+                    "example": "eyJhbGciOiJIUzI1NiIs..."
+                },
+                "token": {
+                    "type": "string",
+                    "example": "eyJhbGciOiJIUzI1NiIs..."
+                },
+                "user": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.User"
+                }
+            }
+        },
+        "internal_handlers.AuthTokenResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers.AuthTokenData"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.CompleteSessionData": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "completed"
+                }
+            }
+        },
+        "internal_handlers.CompleteSessionResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers.CompleteSessionData"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.CreateTopicData": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "generating"
+                },
+                "topic": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Topic"
                 }
             }
         },
@@ -494,13 +813,38 @@
             "type": "object",
             "properties": {
                 "familiarity_level": {
-                    "description": "beginner, some_exposure, basics",
+                    "description": "beginner, intermediate, advanced",
                     "type": "string",
                     "example": "beginner"
                 },
                 "title": {
                     "type": "string",
                     "example": "Quantum Mechanics"
+                }
+            }
+        },
+        "internal_handlers.CreateTopicResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers.CreateTopicData"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "something went wrong"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": false
                 }
             }
         },
@@ -521,7 +865,33 @@
             "type": "object",
             "properties": {
                 "refresh_token": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "eyJhbGciOiJIUzI1NiIs..."
+                }
+            }
+        },
+        "internal_handlers.RefreshTokenData": {
+            "type": "object",
+            "properties": {
+                "refresh_token": {
+                    "type": "string",
+                    "example": "eyJhbGciOiJIUzI1NiIs..."
+                },
+                "token": {
+                    "type": "string",
+                    "example": "eyJhbGciOiJIUzI1NiIs..."
+                }
+            }
+        },
+        "internal_handlers.RefreshTokenResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers.RefreshTokenData"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
                 }
             }
         },
@@ -532,13 +902,109 @@
                     "type": "string",
                     "example": "user@example.com"
                 },
-                "name": {
-                    "type": "string",
-                    "example": "Alice"
-                },
                 "password": {
                     "type": "string",
                     "example": "supersecret"
+                }
+            }
+        },
+        "internal_handlers.RoadmapResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.TopicRoadmap"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.StartSessionData": {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Question"
+                    }
+                },
+                "session_id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            }
+        },
+        "internal_handlers.StartSessionReq": {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "quiz_mode": {
+                    "description": "mcq, text, speech, mixed",
+                    "type": "string",
+                    "example": "mcq"
+                }
+            }
+        },
+        "internal_handlers.StartSessionResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers.StartSessionData"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.TopicListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Topic"
+                    }
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.TopicResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Topic"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.UpdateStatusReq": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers.UserResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.User"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
                 }
             }
         }

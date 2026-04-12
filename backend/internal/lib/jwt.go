@@ -6,23 +6,22 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
 // GenerateToken issues a short-lived access token (7 days).
-func GenerateToken(userID uuid.UUID) (string, error) {
+func GenerateToken(userID string) (string, error) {
 	return signToken(userID, time.Hour*24*7)
 }
 
 // GenerateRefreshToken issues a long-lived refresh token (30 days).
-func GenerateRefreshToken(userID uuid.UUID) (string, error) {
+func GenerateRefreshToken(userID string) (string, error) {
 	return signToken(userID, time.Hour*24*30)
 }
 
-func signToken(userID uuid.UUID, ttl time.Duration) (string, error) {
+func signToken(userID string, ttl time.Duration) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	claims := jwt.MapClaims{
-		"user_id": userID.String(),
+		"user_id": userID,
 		"exp":     time.Now().Add(ttl).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

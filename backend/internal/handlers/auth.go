@@ -8,7 +8,6 @@ import (
 type RegisterReq struct {
 	Email    string `json:"email"    example:"user@example.com"`
 	Password string `json:"password" example:"supersecret"`
-	Name     string `json:"name"     example:"Alice"`
 }
 
 // LoginReq is the request body for /auth/login
@@ -19,7 +18,7 @@ type LoginReq struct {
 
 // RefreshReq is the request body for /auth/refresh
 type RefreshReq struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIs..."`
 }
 
 // Register godoc
@@ -28,10 +27,10 @@ type RefreshReq struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        body  body      RegisterReq  true  "Registration payload"
-// @Success      200   {object}  map[string]interface{}
-// @Failure      400   {object}  map[string]interface{}
-// @Failure      500   {object}  map[string]interface{}
+// @Param        body  body      RegisterReq        true  "Registration payload"
+// @Success      200   {object}  AuthTokenResponse   "Tokens and user profile"
+// @Failure      400   {object}  ErrorResponse       "Validation or registration error"
+// @Failure      500   {object}  ErrorResponse       "Internal server error"
 // @Router       /auth/register [post]
 func (h *APIHandler) Register(c *fiber.Ctx) error {
 	var req RegisterReq
@@ -39,7 +38,7 @@ func (h *APIHandler) Register(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
 	}
 
-	token, refreshToken, user, err := h.Auth.Register(c.Context(), req.Email, req.Password, req.Name)
+	token, refreshToken, user, err := h.Auth.Register(c.Context(), req.Email, req.Password)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Registration failed: " + err.Error()})
 	}
@@ -60,17 +59,16 @@ func (h *APIHandler) Register(c *fiber.Ctx) error {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        body  body      LoginReq  true  "Login credentials"
-// @Success      200   {object}  map[string]interface{}
-// @Failure      400   {object}  map[string]interface{}
-// @Failure      401   {object}  map[string]interface{}
+// @Param        body  body      LoginReq           true  "Login credentials"
+// @Success      200   {object}  AuthTokenResponse   "Tokens and user profile"
+// @Failure      400   {object}  ErrorResponse       "Invalid request payload"
+// @Failure      401   {object}  ErrorResponse       "Invalid credentials"
 // @Router       /auth/login [post]
 func (h *APIHandler) Login(c *fiber.Ctx) error {
 	var req LoginReq
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
 	}
-
 	token, refreshToken, user, err := h.Auth.Login(c.Context(), req.Email, req.Password)
 	if err != nil {
 		return c.Status(401).JSON(fiber.Map{"success": false, "error": err.Error()})
@@ -92,10 +90,10 @@ func (h *APIHandler) Login(c *fiber.Ctx) error {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        body  body      RefreshReq  true  "Refresh token"
-// @Success      200   {object}  map[string]interface{}
-// @Failure      400   {object}  map[string]interface{}
-// @Failure      401   {object}  map[string]interface{}
+// @Param        body  body      RefreshReq             true  "Refresh token"
+// @Success      200   {object}  RefreshTokenResponse    "New token pair"
+// @Failure      400   {object}  ErrorResponse           "Invalid request payload"
+// @Failure      401   {object}  ErrorResponse           "Invalid or expired refresh token"
 // @Router       /auth/refresh [post]
 func (h *APIHandler) RefreshToken(c *fiber.Ctx) error {
 	var req RefreshReq
@@ -123,8 +121,8 @@ func (h *APIHandler) RefreshToken(c *fiber.Ctx) error {
 // @Tags         users
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200  {object}  map[string]interface{}
-// @Failure      404  {object}  map[string]interface{}
+// @Success      200  {object}  UserResponse   "User profile"
+// @Failure      404  {object}  ErrorResponse  "User not found"
 // @Router       /users/me [get]
 func (h *APIHandler) GetMe(c *fiber.Ctx) error {
 	userIDStr := c.Locals("user_id").(string)
