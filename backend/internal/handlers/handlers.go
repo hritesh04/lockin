@@ -19,7 +19,7 @@ type LessonService interface {
 
 type AuthService interface {
 	Register(ctx context.Context, email, password string) (string, string, models.User, error)
-	Login(ctx context.Context, email, password string) (string, string, models.User, error)
+	Login(ctx context.Context, email, password string) (string, string, error)
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetMe(ctx context.Context, userID string) (models.User, error)
 }
@@ -32,8 +32,9 @@ type TopicService interface {
 }
 
 type SessionService interface {
-	StartSession(ctx context.Context, topicID, nodeID, userID uuid.UUID, quizMode string) (uuid.UUID, []models.Question, error)
-	CompleteSession(ctx context.Context, sessionID string) error
+	StartSession(ctx context.Context, topicID uuid.UUID, lessonID *uuid.UUID, userID uuid.UUID, quizMode string) (uuid.UUID, []models.Question, error)
+	CompleteSession(ctx context.Context, sessionID string, answers string, topicID string, userID string) error
+	GetUserActivity(ctx context.Context, userID uuid.UUID) ([]UserActivityData, error)
 }
 
 type APIHandler struct {

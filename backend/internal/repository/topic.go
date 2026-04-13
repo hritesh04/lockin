@@ -17,6 +17,14 @@ func NewTopicRepository(db *pgxpool.Pool) *topicRepository {
 	return &topicRepository{db: db}
 }
 
+func (r *topicRepository) UpdateTierAndRemark(ctx context.Context, topicID string, tier int, remark string) error {
+	_, err := r.db.Exec(ctx,
+		"UPDATE topics SET tier = $1, remark = $2 WHERE id = $3",
+		tier, remark, topicID,
+	)
+	return err
+}
+
 func (r *topicRepository) Create(ctx context.Context, topic models.Topic) error {
 	_, err := r.db.Exec(ctx,
 		"INSERT INTO topics (id, user_id, title, tier) VALUES ($1, $2, $3, $4)",

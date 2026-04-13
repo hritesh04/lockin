@@ -11,20 +11,16 @@ import (
 // AIGenerator defines the behavior required for AI operations
 type AIGenerator interface {
 	GenerateRoadmap(ctx context.Context, id string, title string, proficiency string) error
-	GenerateQuiz(ctx context.Context, id string, title string, proficiency string)
 }
 
-
-
 type TopicRepository interface {
+	UpdateTierAndRemark(ctx context.Context, topicID string, tier int, remark string) error
 	Create(ctx context.Context, topic models.Topic) error
 	GetAll(ctx context.Context, userID uuid.UUID) ([]models.Topic, error)
 	GetByID(ctx context.Context, topicID, userID string) (models.Topic, error)
 	IsUserTopic(ctx context.Context, userID, topicID string) bool
 	GetRoadmap(ctx context.Context, topicID, userID string) (*models.TopicRoadmap, error)
 }
-
-
 
 type topicService struct {
 	repo  TopicRepository

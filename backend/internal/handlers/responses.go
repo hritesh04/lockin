@@ -10,9 +10,8 @@ type ErrorResponse struct {
 }
 
 type AuthTokenData struct {
-	Token        string      `json:"token" example:"eyJhbGciOiJIUzI1NiIs..."`
-	RefreshToken string      `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIs..."`
-	User         models.User `json:"user"`
+	Token        string `json:"token" example:"eyJhbGciOiJIUzI1NiIs..."`
+	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIs..."`
 }
 
 type AuthTokenResponse struct {
@@ -52,7 +51,6 @@ type TopicListResponse struct {
 
 type TopicResponse struct {
 	Success bool         `json:"success" example:"true"`
-
 	Data    models.Topic `json:"data"`
 }
 
@@ -78,4 +76,34 @@ type CompleteSessionData struct {
 type CompleteSessionResponse struct {
 	Success bool                `json:"success" example:"true"`
 	Data    CompleteSessionData `json:"data"`
+}
+
+type LessonActivity struct {
+	Title       string `json:"title"`
+	CreatedAt   string `json:"created_at"`
+	CompletedAt string `json:"completed_at"`
+}
+
+type QuizActivity struct {
+	TopicName   string `json:"topic_name"`
+	CreatedAt   string `json:"created_at"`
+	CompletedAt string `json:"completed_at"`
+}
+
+type UserActivityData struct {
+	Day       string           `json:"day"`
+	Lessons   []LessonActivity `json:"lessons"`
+	Quizes    []QuizActivity   `json:"quizes"`
+	TotalTime int              `json:"total_time"` // in seconds
+}
+
+type UserActivityInfo struct {
+	ActiveStreak  int                `json:"active_streak" example:"3"`
+	HighestStreak int                `json:"highest_streak" example:"10"`
+	Activity      []UserActivityData `json:"activity"`
+}
+
+type GetUserActivityResponse struct {
+	Success bool             `json:"success" example:"true"`
+	Data    UserActivityInfo `json:"data"`
 }

@@ -3,18 +3,27 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/acerowl/lockin/backend/internal/lib"
 	"github.com/acerowl/lockin/backend/internal/models"
-	"github.com/acerowl/lockin/backend/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type authService struct {
-	repo repository.UserRepository
+type UserRepository interface {
+	CreateUser(ctx context.Context, email, passwordHash string) (models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (models.User, string, error)
+	GetUserByID(ctx context.Context, id string) (models.User, error)
+	SaveRefreshToken(ctx context.Context, userID string, refreshToken string) error
+	CheckUserRefreshToken(ctx context.Context, userID string, refreshToken string) (bool, error)
+	UpdateStreak(ctx context.Context, userID string, current, longest int, lastDate time.Time) error
 }
 
-func NewAuthService(r repository.UserRepository) *authService {
+type authService struct {
+	repo UserRepository
+}
+
+func NewAuthService(r UserRepository) *authService {
 	return &authService{repo: r}
 }
 
@@ -39,24 +48,24 @@ func (s *authService) Register(ctx context.Context, email, password string) (str
 	return token, refreshToken, user, nil
 }
 
-func (s *authService) Login(ctx context.Context, email, password string) (string, string, models.User, error) {
+func (s *authService) Login(ctx context.Context, email, password string) (string, string, error) {
 	user, hash, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return "", "", models.User{}, errors.New("invalid credentials")
+		return "", "", errors.New("invalid credentials")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
-		return "", "", models.User{}, errors.New("invalid credentials")
+		return "", "", errors.New("invalid credentials")
 	}
 
 	token, _ := lib.GenerateToken(user.ID)
 	refreshToken, _ := lib.GenerateRefreshToken(user.ID)
 
 	if err := s.repo.SaveRefreshToken(ctx, user.ID, refreshToken); err != nil {
-		return "", "", models.User{}, err
+		return "", "", err
 	}
 
-	return token, refreshToken, user, nil
+	return token, refreshToken, nil
 }
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {

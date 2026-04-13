@@ -38,17 +38,16 @@ func (h *APIHandler) Register(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
 	}
 
-	token, refreshToken, user, err := h.Auth.Register(c.Context(), req.Email, req.Password)
+	token, refreshToken, _, err := h.Auth.Register(c.Context(), req.Email, req.Password)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Registration failed: " + err.Error()})
 	}
 
-	return c.JSON(fiber.Map{
-		"success": true,
-		"data": fiber.Map{
-			"token":         token,
-			"refresh_token": refreshToken,
-			"user":          user,
+	return c.JSON(AuthTokenResponse{
+		Success: true,
+		Data: AuthTokenData{
+			Token:        token,
+			RefreshToken: refreshToken,
 		},
 	})
 }
@@ -69,17 +68,16 @@ func (h *APIHandler) Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
 	}
-	token, refreshToken, user, err := h.Auth.Login(c.Context(), req.Email, req.Password)
+	token, refreshToken, err := h.Auth.Login(c.Context(), req.Email, req.Password)
 	if err != nil {
 		return c.Status(401).JSON(fiber.Map{"success": false, "error": err.Error()})
 	}
 
-	return c.JSON(fiber.Map{
-		"success": true,
-		"data": fiber.Map{
-			"token":         token,
-			"refresh_token": refreshToken,
-			"user":          user,
+	return c.JSON(AuthTokenResponse{
+		Success: true,
+		Data: AuthTokenData{
+			Token:        token,
+			RefreshToken: refreshToken,
 		},
 	})
 }

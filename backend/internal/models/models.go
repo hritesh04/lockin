@@ -97,6 +97,7 @@ type User struct {
 	ID              string     `json:"id" db:"id"`
 	Email           string     `json:"email" db:"email"`
 	PasswordHash    string     `json:"-" db:"password_hash"`
+	CurrentStreak   int        `json:"currentStreak" db:"current_streak"`
 	LongestStreak   int        `json:"longestStreak" db:"longest_streak"`
 	LastSessionDate *time.Time `json:"lastSessionDate,omitempty" db:"last_session_date"`
 	RefreshToken    *string    `json:"-" db:"refresh_token"`
@@ -118,9 +119,8 @@ type Session struct {
 	ID          string     `json:"id" db:"id"`
 	UserID      string     `json:"userId" db:"user_id"`
 	TopicID     string     `json:"topicId" db:"topic_id"`
-	NodeID      string     `json:"nodeId" db:"node_id"`
+	LessonID    string     `json:"lessonId" db:"lesson_id"`
 	QuizMode    QuizMode   `json:"quizMode" db:"quiz_mode"`
 	CreatedAt   time.Time  `json:"createdAt" db:"created_at"`
-	StartAt     time.Time  `json:"startAt" db:"start_at"`
 	CompletedAt *time.Time `json:"completedAt,omitempty" db:"completed_at"`
 }
