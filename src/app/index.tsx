@@ -14,8 +14,10 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createTopic, listTopics, proficiencyToApi } from '../lib/api';import { Topic, useTopicsStore } from '../store/topics';
+import { createTopic, getActivity, getMe, listTopics, proficiencyToApi } from '../lib/api';
+import { Topic, useTopicsStore } from '../store/topics';
 import { useUserStore } from '../store/user';
+import { useAuthStore } from '../store/auth';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -24,32 +26,44 @@ export default function HomeScreen() {
   const topics = useTopicsStore(state => state.topics);
   const addTopic = useTopicsStore(state => state.addTopic);
   const setTopics = useTopicsStore(state => state.setTopics);
+  const hydrateUser = useUserStore(state => state.hydrateFromServer);
+  const setActivityHistory = useUserStore(state => state.setActivityHistory);
+  const fullActivityHistory = useUserStore(state => state.activityHistory);
+
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [topicName, setTopicName] = useState('');
   const [selectedProficiency, setSelectedProficiency] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
   const [isGenerating, setIsGenerating] = useState(false);
   
-  const [dbActivityHistory, setDbActivityHistory] = useState<('active' | 'inactive')[]>(Array(7).fill('inactive'));
+  // Calculate dots for last 7 days
+  const dbActivityHistory: ('active' | 'inactive')[] = Array(7).fill('inactive').map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dayStr = d.toISOString().split('T')[0];
+    const hasActivity = fullActivityHistory.find(a => a.day === dayStr);
+    return hasActivity ? 'active' : 'inactive';
+  });
+
+  const token = useAuthStore(state => state.token);
 
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
 
     const run = async () => {
+      if (!token) return;
       try {
-        // TODO: Replace with actual activity history API endpoint once ready
-        // Scaffold: returning active/inactive for last 7 days arbitrarily for now
-        const mockActivity: ('active' | 'inactive')[] = [
-          'inactive', 'active', 'inactive', 'inactive', 'active', 'active', 'inactive' 
-        ];
-        if (isActive) setDbActivityHistory(mockActivity);
-      } catch (e) {
-        console.error('Error fetching activity history:', e);
-      }
+        const [userData, activityInfo, apiTopics] = await Promise.all([
+          getMe(),
+          getActivity(),
+          listTopics(),
+        ]);
 
-      try {
-        const apiTopics = await listTopics();
+        if (isActive) {
+          hydrateUser(userData);
+          setActivityHistory(activityInfo.activity);
+        }
         
         // Map ApiTopic to Topic
         const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
@@ -57,14 +71,14 @@ export default function HomeScreen() {
           title: t.title,
           currentTier: t.currentTier ?? 1,
           familiarityLevel: t.familiarityLevel ?? 'beginner',
-          accuracyPercent: 0, // Placeholder, API should ideally return this
-          sessionsCompleted: 0, // Placeholder, API should ideally return this
+          accuracyPercent: 0, 
+          sessionsCompleted: 0,
           weakConcepts: [],
         }));
         
         if (isActive) setTopics(mappedTopics);
       } catch (e) {
-        console.warn('Topic API sync failed', e);
+        console.warn('API sync failed', e);
       }
     };
 
@@ -73,7 +87,7 @@ export default function HomeScreen() {
       return () => {
         isActive = false;
       };
-    }, [setTopics])
+    }, [setTopics, token])
   );
 
   const handleCreate = async () => {

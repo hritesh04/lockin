@@ -1,36 +1,38 @@
 import { create } from 'zustand';
-import type { ApiUser } from '../lib/api';
+import type { ApiUser, UserActivityData } from '../lib/api';
 
 interface UserState {
   hasCompletedOnboarding: boolean;
   streakCount: number;
-  activityHistory: ('active' | 'inactive')[];
+  longestStreak: number;
+  activityHistory: UserActivityData[];
   goal: string | null;
   dailyCommitment: number | null;
   serverUserId: string | null;
-  serverName: string | null;
   serverEmail: string | null;
   completeOnboarding: (goal: string, commitment: number) => void;
   incrementStreak: () => void;
   hydrateFromServer: (u: ApiUser) => void;
+  setActivityHistory: (history: UserActivityData[]) => void;
 }
 
 export const useUserStore = create<UserState>((set) => ({
   hasCompletedOnboarding: false,
   streakCount: 0,
-  activityHistory: ['active', 'active', 'inactive', 'inactive', 'inactive'],
+  longestStreak: 0,
+  activityHistory: [],
   goal: null,
   dailyCommitment: null,
   serverUserId: null,
-  serverName: null,
   serverEmail: null,
   completeOnboarding: (goal, commitment) => set({ hasCompletedOnboarding: true, goal, dailyCommitment: commitment }),
   incrementStreak: () => set((state) => ({ streakCount: state.streakCount + 1 })),
   hydrateFromServer: (u) =>
     set({
       serverUserId: u.id,
-      serverName: u.name,
       serverEmail: u.email,
-      streakCount: u.streakCount,
+      streakCount: u.currentStreak,
+      longestStreak: u.longestStreak,
     }),
+  setActivityHistory: (history) => set({ activityHistory: history }),
 }));
