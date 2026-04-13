@@ -1,16 +1,15 @@
-.PHONY: swag build run dev
+.PHONY: swag build build-docker run dev
 
-# Regenerate Swagger docs (run this whenever you change handler annotations)
 swag:
 	swag init -g cmd/server/main.go -o docs --parseDependency --parseInternal
 
-# Build the server binary
 build: swag
 	go build -o bin/server ./cmd/server
 
-# Run with live .env
+build-docker: swag
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o main ./cmd/server/main.go
+
 run: swag
 	go run ./cmd/server
 
-# Alias for run
 dev: run
