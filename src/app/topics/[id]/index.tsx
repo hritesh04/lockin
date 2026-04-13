@@ -4,10 +4,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuthStore } from '../../../store/auth';
+import { useLessonStore } from '../../../store/lessons';
+import { useModuleStore } from '../../../store/modules';
 import { useTopicsStore } from '../../../store/topics';
 import { useUserStore } from '../../../store/user';
-import { useModuleStore, Module } from '../../../store/modules';
-import { useLessonStore, Lesson } from '../../../store/lessons';
 
 export default function TopicDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -24,7 +25,10 @@ export default function TopicDetailScreen() {
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
+  const token = useAuthStore(state => state.token);
+  
   useEffect(()=>{
+    if (!token) return;
     const targetId = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : null);
     if (targetId) {
       setLoading(true);
@@ -45,7 +49,7 @@ export default function TopicDetailScreen() {
         setLoading(false);
       });
     }
-  },[id]);
+  },[id, token]);
 
   if (!topic) {
     return (
@@ -55,21 +59,11 @@ export default function TopicDetailScreen() {
     );
   }
 
-  const handleStartSession = (mode: string) => {
-    switch (mode) {
-      case 'text':
-        router.push(`/topics/${id}/session/text`);
-        break;
-      case 'speech':
-        router.push(`/topics/${id}/session/speech`);
-        break;
-      case 'mcq':
-        router.push(`/topics/${id}/session`);
-        break;
-      default:
-        router.push(`/topics/${id}/session`);
-        break;
-    }
+  const handleStartSession = (mode: 'options' | 'text') => {
+    router.push({
+      pathname: `/topics/${id}/session` as any,
+      params: { quizMode: mode }
+    });
   };
 
   const toggleNodeInfo = (nodeId: string) => {
@@ -103,7 +97,7 @@ export default function TopicDetailScreen() {
               size={14} 
               color="#f97316" 
             />
-              <Text style={styles.streakText}>{streakCount}d Streak</Text>
+              <Text style={styles.streakText}>{streakCount} day Streak</Text>
           </View>
           : <View style={styles.noStreakBadge}>
               <Text style={styles.noStreakText}>No Streak</Text>
@@ -139,15 +133,15 @@ export default function TopicDetailScreen() {
           <View style={styles.modeList}>
             <TouchableOpacity 
               style={styles.modeCard} 
-              onPress={() => handleStartSession('mcq')}
+              onPress={() => handleStartSession('options')}
               activeOpacity={0.7}
             >
               <View style={[styles.modeIconBox, { backgroundColor: '#FFEDD5' }]}>
                 <Feather name="check-square" size={24} color="#f97316" />
               </View>
               <View style={styles.modeContent}>
-                <Text style={styles.modeName}>MCQ Quiz</Text>
-                <Text style={styles.modeDesc}>Multiple choice questions</Text>
+                <Text style={styles.modeName}>Mastery Quiz</Text>
+                <Text style={styles.modeDesc}>MCQ & True/False questions</Text>
               </View>
               <Feather name="chevron-right" size={20} color="#CBD5E1" />
             </TouchableOpacity>
@@ -161,23 +155,8 @@ export default function TopicDetailScreen() {
                 <Feather name="edit-3" size={24} color="#2563EB" />
               </View>
               <View style={styles.modeContent}>
-                <Text style={styles.modeName}>Text Answer</Text>
-                <Text style={styles.modeDesc}>Write detailed explanations</Text>
-              </View>
-              <Feather name="chevron-right" size={20} color="#CBD5E1" />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.modeCard} 
-              onPress={() => handleStartSession('speech')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.modeIconBox, { backgroundColor: '#D1FAE5' }]}>
-                <Feather name="mic" size={24} color="#10B981" />
-              </View>
-              <View style={styles.modeContent}>
-                <Text style={styles.modeName}>Speech Mode</Text>
-                <Text style={styles.modeDesc}>Speak out your answers</Text>
+                <Text style={styles.modeName}>Deep Dive</Text>
+                <Text style={styles.modeDesc}>Short Answer & Fill-in-blanks</Text>
               </View>
               <Feather name="chevron-right" size={20} color="#CBD5E1" />
             </TouchableOpacity>

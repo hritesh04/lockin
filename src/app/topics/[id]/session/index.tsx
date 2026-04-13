@@ -1,5 +1,5 @@
 import SessionComplete from '@/components/SessionComplete';
-import { completeSession, updateProgress } from '@/lib/api';
+import { completeSession, startSession, updateProgress } from '@/lib/api';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -22,10 +22,19 @@ import { Option, useSessionStore } from '../../../../store/session';
 import { useTopicsStore } from '../../../../store/topics';
 
 export default function SessionScreen() {
-  const { id, lessonId, quizz } = useLocalSearchParams();
+  const { id, lessonId, quizz, quizMode } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { questions, currentIndex, isCompleted, score, startSession, submitAnswer, nextQuestion, resetSession } = useSessionStore();
+  const { 
+    questions, 
+    currentIndex, 
+    isCompleted, 
+    score, 
+    startSession: startSessionStore, 
+    submitAnswer, 
+    nextQuestion, 
+    resetSession 
+  } = useSessionStore();
   const topic = useTopicsStore(s => s.topics.find(t => t.id === id));
   const { updateTopicProgress } = useTopicsStore();
 
@@ -75,59 +84,30 @@ export default function SessionScreen() {
 
     const targetId = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : '');
     const targetLessonId = typeof lessonId === 'string' ? lessonId : (Array.isArray(lessonId) ? lessonId[0] : '');
-    
-    if (targetLessonId && lessons[targetLessonId]) {
-      const foundLesson = lessons[targetLessonId];
-      const realQuestions = foundLesson?.quizzes || [];
-      if (realQuestions.length > 0) {
-        const formattedQs = realQuestions.map((q: any) => ({
-          ...q,
-          format: q.type,
-          options: q.options || [],
-        }));
+    const targetQuizMode = typeof quizMode === 'string' ? quizMode : undefined;
+
+    setLoading(true);
+    startSession({ 
+      topic_id: targetId, 
+      lesson_id: targetLessonId || undefined,
+      quiz_mode: targetLessonId ? 'lesson' : targetQuizMode
+    })
+      .then((res: any) => {
         if (!cancelled) {
-          startSession(`session-${targetLessonId}`, formattedQs);
+          startSessionStore(res.session_id, res.questions);
           setLoading(false);
         }
-      } else {
+      })
+      .catch((err: any) => {
+        console.error("Failed to start session:", err);
         if (!cancelled) setLoading(false);
-      }
-    } else if (!targetLessonId) {
-      // Fallback
-      const dummyQuestions = [
-        { 
-          id: '1', format: 'mcq', question: 'What is the powerhouse of the cell?', 
-          options: [
-            { id: 'opt1', label: 'Nucleus', is_correct: false },
-            { id: 'opt2', label: 'Mitochondria', is_correct: true, explanation: 'Mitochondria generate most of the chemical energy.' },
-            { id: 'opt3', label: 'Ribosome', is_correct: false },
-            { id: 'opt4', label: 'Membrane', is_correct: false }
-          ], 
-          answer: 'Mitochondria', explanation: 'Mitochondria generate most of the chemical energy.' 
-        },
-        { id: '2', format: 'text', question: 'Explain the single responsibility principle.', answer: 'A class should have one reason to change.', explanation: 'Functions should only do one thing.' },
-        { 
-          id: '3', format: 'true_false', question: 'React Native compiles to native code.', 
-          options: [
-             { id: 't', label: 'True', is_correct: true },
-             { id: 'f', label: 'False', is_correct: false }
-          ], 
-          answer: 'True', explanation: 'It uses native UI components.' 
-        },
-      ] as any;
-      if (!cancelled) {
-        startSession(`session-${targetId}`, dummyQuestions);
-        setLoading(false);
-      }
-    } else {
-      if (!cancelled) setLoading(false);
-    }
-    
+      });
+
     return () => {
       cancelled = true;
       resetSession();
     };
-  }, [id, lessonId, lessons]);
+  }, [id, lessonId]);
 
   const handleSpeechInput = () => {
     if (isListening) {
@@ -161,7 +141,7 @@ export default function SessionScreen() {
 
     if (isMcq) {
       const isCorrect = selectedOption?.is_correct || false;
-      submitAnswer(isCorrect);
+      submitAnswer(selectedOption?.label || '', isCorrect);
       setShowExplanation(true);
       progressAnim.stopAnimation();
     } else {
@@ -169,7 +149,7 @@ export default function SessionScreen() {
         ? answer.trim().toLowerCase() === q.answer.toLowerCase() 
         : true;
       
-      submitAnswer(isCorrect);
+      submitAnswer(answer, isCorrect);
       setApiFeedback({ 
         explanation: q.explanation || 'Answer recorded.', 
         is_correct: isCorrect 
@@ -179,48 +159,50 @@ export default function SessionScreen() {
     }
   };
 
+  const handleFinishActions = async () => {
+    const sid = useSessionStore.getState().activeSessionId;
+    const userAnswers = useSessionStore.getState().userAnswers;
+    if (!sid) return;
+
+    try {
+      // 1. Always complete the session
+      const diagData = !lessonId ? {
+        topic_id: id as string,
+        answers: userAnswers
+      } : undefined;
+      
+      await completeSession(sid, diagData);
+
+      // 2. If it's a lesson-based session, trigger progress as a separate call
+      if (lessonId) {
+        const progressRes = await updateProgress(lessonId as string);
+        setLessons(progressRes.updatedLessons);
+        setModules(progressRes.updatedModules);
+      }
+    } catch (e) {
+      console.warn('Session finalization failed:', e);
+    }
+
+    const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+    updateTopicProgress(id as string, pct, 1);
+  };
+
   const handleDashboard = () => {
     void (async () => {
-      const sid = useSessionStore.getState().activeSessionId;
-      if (sid) {
-        try { 
-          if (quizz){
-            const data = await updateProgress(lessonId as string);
-            setLessons(data.updatedLessons);
-            setModules(data.updatedModules);
-          }else{
-            await completeSession(sid); 
-          }
-        } catch (e) { 
-          console.warn('finish fail', e); 
-        }
-      }
-      const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
-      updateTopicProgress(id as string, pct, 1);
+      await handleFinishActions();
       router.back();
     })();
   };
 
   const handleNextSession = () => {
     void (async () => {
-      const sid = useSessionStore.getState().activeSessionId;
-      if (sid) {
-        try {
-          if(quizz){
-            const data = await updateProgress(lessonId as string);
-            setLessons(data.updatedLessons);
-            setModules(data.updatedModules);
-          }else{
-            await completeSession(sid);
-          }
-        } catch (e) { 
-          console.warn('finish fail', e);
-        }
-      }
-      const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
-      updateTopicProgress(id as string, pct, 1);
+      await handleFinishActions();
+      const targetQuizMode = typeof quizMode === 'string' ? quizMode : undefined;
       resetSession();
-      router.replace(`/topics/${id as string}/session`);
+      router.replace({
+        pathname: `/topics/${id}/session` as any,
+        params: { quizMode: targetQuizMode }
+      });
     })();
   };
 
