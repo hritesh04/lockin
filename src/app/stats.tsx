@@ -1,36 +1,133 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import {
-    DimensionValue,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
-} from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Dimensions, DimensionValue, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FloatingNavBar from '../components/FloatingNavBar';
+import { getActivity, getMe } from '../lib/api';
+import { useAuthStore } from '../store/auth';
+import { useUserStore } from '../store/user';
+
+// Dynamic sizing for heatmap grid
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const GRID_PADDING = 24;
+const GRID_GAP = 8;
+const GRID_CONTAINER_WIDTH = SCREEN_WIDTH - (GRID_PADDING * 2) - 48; // Total width minus card padding & container padding
+const SQUARE_SIZE = (GRID_CONTAINER_WIDTH - (9 * GRID_GAP)) / 10;
 
 export default function StatsScreen() {
+  const [activeBar, setActiveBar] = useState<number | null>(null);
+  const [activeSquare, setActiveSquare] = useState<number | null>(null);
   const router = useRouter();
-  const [showAddModal, setShowAddModal] = useState(false);
+  const streakCount = useUserStore(state => state.streakCount);
+  const activityHistory = useUserStore(state => state.activityHistory);
+  const hydrateUser = useUserStore(state => state.hydrateFromServer);
+  const setActivityHistory = useUserStore(state => state.setActivityHistory);
+  const token = useAuthStore(state => state.token);
 
-  // Mock data for heatmap (30 days)
-  const heatmapData = Array.from({ length: 30 }, (_, i) => ({
-    id: i,
-    intensity: Math.random() > 0.3 ? Math.random() : 0, // 0 to 1
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      const load = async () => {
+        if (!token) return;
+        try {
+          const [userData, activityInfo] = await Promise.all([
+            getMe(),
+            getActivity(),
+          ]);
+          if (isActive) {
+            hydrateUser(userData);
+            setActivityHistory(activityInfo.activity);
+          }
+        } catch (e) {
+          console.error('Stats API sync failed', e);
+        }
+      };
+      load();
+      return () => { isActive = false; };
+    }, [token])
+  );
+
+  // Map 30 days for heatmap
+  const heatmapData = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - (29 - i));
+    
+    // Robust local date comparison
+    const dayData = activityHistory.find(a => {
+      // Split YYYY-MM-DD
+      const parts = a.day.split('-');
+      if (parts.length !== 3) return false;
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // 0-indexed
+      const day = parseInt(parts[2], 10);
+      return year === d.getFullYear() && month === d.getMonth() && day === d.getDate();
+    });
+    
+    // Intensity based on session count or time spent
+    const sessionCount = (dayData?.lessons?.length || 0) + (dayData?.quizes?.length || 0);
+    const timeSec = dayData?.total_time || 0;
+    
+    let intensity = 0;
+    if (sessionCount >= 3 || timeSec >= 3600) intensity = 1.0;
+    else if (sessionCount >= 2 || timeSec >= 1800) intensity = 0.6;
+    else if (sessionCount >= 1 || timeSec > 0) intensity = 0.3;
+
+    const dayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { 
+      id: i, 
+      intensity, 
+      day: dayStr,
+      sessionCount,
+      lessonCount: dayData?.lessons?.length || 0,
+      quizCount: dayData?.quizes?.length || 0
+    };
+  });
+
+  // Calculate totals
+  const totalTopics = new Set(activityHistory.flatMap(a => a.quizes.map(q => q.topic_name))).size;
+  const totalTimeSeconds = activityHistory.reduce((acc, curr) => acc + curr.total_time, 0);
+  
+  const formatDuration = (seconds: number) => {
+    if (seconds === 0) return "0 min";
+    if (seconds < 3600) {
+      return `${Math.round(seconds / 60)} min`;
+    }
+    const h = Math.floor(seconds / 3600);
+    const m = Math.round((seconds % 3600) / 60);
+    return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  };
+
+  const totalTimeLabel = formatDuration(totalTimeSeconds);
+  const totalLessons = activityHistory.reduce((acc, curr) => acc + curr.lessons.length, 0);
+
+  // Weekly trend (last 7 days focus time)
+  const last7DaysRaw = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dayStr = d.toISOString().split('T')[0];
+    const dayData = activityHistory.find(a => a.day === dayStr);
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const timeSec = dayData?.total_time || 0;
+    return { day: dayName, timeSec, active: i === 6 };
+  });
+
+  const maxTime = Math.max(...last7DaysRaw.map(d => d.timeSec), 60); // Min scale of 10 mins
+
+  const last7Days = last7DaysRaw.map(day => ({
+    ...day,
+    height: `${Math.max((day.timeSec / maxTime) * 100, day.timeSec > 0 ? 5 : 0)}%` as DimensionValue
   }));
 
-  // Mock data for weekly trend
-  const weeklyTrend = [
-    { day: 'Mon', height: '30%' },
-    { day: 'Tue', height: '50%' },
-    { day: 'Wed', height: '40%' },
-    { day: 'Thu', height: '90%', active: true },
-    { day: 'Fri', height: '70%' },
-    { day: 'Sat', height: '20%' },
-    { day: 'Sun', height: '45%' },
-  ];
+  // Recent activity feed (flattened)
+  const recentActivities = activityHistory
+    .flatMap(day => [
+      ...day.lessons.map(l => ({ ...l, type: 'lesson' as const, day: day.day })),
+      ...day.quizes.map(q => ({ ...q, type: 'quiz' as const, day: day.day }))
+    ])
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 5);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -45,7 +142,7 @@ export default function StatsScreen() {
           </View>
           <View style={styles.streakBadge}>
             <MaterialCommunityIcons name="fire" size={16} color="#f97316" />
-            <Text style={styles.streakText}>12 Day Streak</Text>
+            <Text style={styles.streakText}>{streakCount} Day Streak</Text>
           </View>
         </View>
       </View>
@@ -62,18 +159,29 @@ export default function StatsScreen() {
         <View style={styles.heatmapCard}>
           <View style={styles.heatmapGrid}>
             {heatmapData.map((item) => (
-              <View 
-                key={item.id} 
-                style={[
-                  styles.heatmapSquare, 
-                  { 
-                    backgroundColor: item.intensity === 0 
-                      ? '#1E293B' // slate-800 
-                      : `rgba(249, 115, 22, ${0.2 + item.intensity * 0.8})` 
-                  },
-                  item.intensity > 0.8 && styles.heatmapSquareHighlight
-                ]} 
-              />
+              <View key={item.id} style={{ alignItems: 'center', zIndex: activeSquare === item.id ? 100 : 1 }}>
+                {activeSquare === item.id && (
+                  <View style={styles.heatmapTooltip}>
+                    <Text style={styles.tooltipText}>{item.sessionCount} Sessions</Text>
+                    <Text style={styles.tooltipSubText}>{item.lessonCount} Lessons, {item.quizCount} Quizzes</Text>
+                    <View style={styles.tooltipArrow} />
+                  </View>
+                )}
+                <Pressable
+                  onPressIn={() => setActiveSquare(item.id)}
+                  onPressOut={() => setActiveSquare(null)}
+                  style={[
+                    styles.heatmapSquare, 
+                    { 
+                      backgroundColor: item.intensity === 0 
+                        ? '#1E293B' // slate-800 
+                        : `rgba(249, 115, 22, ${0.4 + item.intensity * 0.6})` 
+                    },
+                    item.intensity > 0.8 && styles.heatmapSquareHighlight,
+                    activeSquare === item.id && { transform: [{ scale: 1.1 }], zIndex: 10 }
+                  ]} 
+                />
+              </View>
             ))}
           </View>
           <View style={styles.heatmapLegend}>
@@ -83,11 +191,11 @@ export default function StatsScreen() {
               <View style={styles.legendRow}>
                 <View style={[styles.legendBox, { backgroundColor: '#1E293B' }]} />
                 <View style={[styles.legendBox, { backgroundColor: 'rgba(249, 115, 22, 0.3)' }]} />
-                <View style={[styles.legendBox, { backgroundColor: 'rgba(249, 115, 22, 0.6)' }]} />
-                <View style={[styles.legendBox, { backgroundColor: '#f97316' }]} />
+                  <View style={[styles.legendBox, { backgroundColor: 'rgba(249, 115, 22, 0.6)' }]} />
+                  <View style={[styles.legendBox, { backgroundColor: '#f97316' }]} />
+                </View>
+                <Text style={styles.legendText}>More</Text>
               </View>
-              <Text style={styles.legendText}>More</Text>
-            </View>
           </View>
         </View>
 
@@ -97,8 +205,8 @@ export default function StatsScreen() {
             <View style={styles.statIconWrapper}>
               <Feather name="award" size={16} color="#facc15" />
             </View>
-            <Text style={styles.statLabel}>COURSES</Text>
-            <Text style={styles.statValue}>8 <Text style={styles.statUnit}>Total</Text></Text>
+            <Text style={styles.statLabel}>LESSONS</Text>
+            <Text style={styles.statValue}>{totalLessons} <Text style={styles.statUnit}>Total</Text></Text>
           </View>
 
           <View style={styles.statBox}>
@@ -106,7 +214,7 @@ export default function StatsScreen() {
               <Feather name="clock" size={16} color="#fb923c" />
             </View>
             <Text style={styles.statLabel}>FOCUS TIME</Text>
-            <Text style={styles.statValue}>14.5 <Text style={styles.statUnit}>hrs</Text></Text>
+            <Text style={styles.statValue}>{totalTimeLabel}</Text>
           </View>
 
           <View style={styles.statBox}>
@@ -114,39 +222,55 @@ export default function StatsScreen() {
               <Feather name="book-open" size={16} color="#fb923c" />
             </View>
             <Text style={styles.statLabel}>TOPICS</Text>
-            <Text style={styles.statValue}>24 <Text style={styles.statUnit}>Covered</Text></Text>
+            <Text style={styles.statValue}>{totalTopics} <Text style={styles.statUnit}>Covered</Text></Text>
           </View>
 
           <View style={styles.statBox}>
             <View style={styles.statIconWrapper}>
               <Feather name="calendar" size={16} color="#fb923c" />
             </View>
-            <Text style={styles.statLabel}>AVG STREAK</Text>
-            <Text style={styles.statValue}>18 <Text style={styles.statUnit}>Days</Text></Text>
+            <Text style={styles.statLabel}>STREAK</Text>
+            <Text style={styles.statValue}>{streakCount} <Text style={styles.statUnit}>Days</Text></Text>
           </View>
         </View>
 
         {/* Weekly Trend Section */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>LEARNING HOURS TREND</Text>
+          <Text style={styles.sectionTitle}>LEARNING TREND</Text>
         </View>
         <View style={styles.chartCard}>
           <View style={styles.chartArea}>
-            {weeklyTrend.map((day) => (
-              <View key={day.day} style={styles.barWrapper}>
-                <View 
-                  style={[
-                    styles.barFill, 
-                    { height: day.height as DimensionValue },
-                    day.active && styles.barFillActive
-                  ]} 
-                />
-              </View>
-            ))}
+            {last7Days.map((day, i) => {
+              const dayTimeLabel = formatDuration(day.timeSec);
+              return (
+                <View key={i} style={styles.barWrapper}>
+                  <Pressable 
+                    onPressIn={() => setActiveBar(i)}
+                    onPressOut={() => setActiveBar(null)}
+                    style={{ width: '100%', height: '100%', justifyContent: 'flex-end', alignItems: 'center' }}
+                  >
+                    {activeBar === i && (
+                      <View style={[styles.tooltip, { bottom: day.height }]}>
+                        <Text style={styles.tooltipText}>{dayTimeLabel}</Text>
+                        <View style={styles.tooltipArrow} />
+                      </View>
+                    )}
+                    <View 
+                      style={[
+                        styles.barFill, 
+                        { height: day.height },
+                        // (day.active || activeBar === i) && 
+                        styles.barFillActive
+                      ]} 
+                    />
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
           <View style={styles.chartLabels}>
-            {weeklyTrend.map((day) => (
-              <Text key={day.day} style={styles.chartLabelText}>{day.day}</Text>
+            {last7Days.map((day, i) => (
+              <Text key={i} style={styles.chartLabelText}>{day.day}</Text>
             ))}
           </View>
         </View>
@@ -156,42 +280,27 @@ export default function StatsScreen() {
           <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
         </View>
         <View style={styles.feedWrapper}>
-          <View style={styles.feedItem}>
-            <View style={styles.feedIconBox}>
-              <Feather name="code" size={18} color="#f97316" />
+          {recentActivities.map((act, i) => (
+            <View key={i} style={styles.feedItem}>
+              <View style={styles.feedIconBox}>
+                <Feather name={act.type === 'lesson' ? 'book-open' : 'zap'} size={18} color="#f97316" />
+              </View>
+              <View style={styles.feedContent}>
+                <Text style={styles.feedTitle}>
+                  {act.type === 'lesson' ? act.title : (act as any).topic_name + ' Quiz'}
+                </Text>
+                <Text style={styles.feedDesc}>
+                  {new Date(act.completed_at || act.created_at).toLocaleDateString()}
+                </Text>
+              </View>
+              <View style={styles.feedCheck}>
+                <Feather name="check" size={12} color="#f97316" />
+              </View>
             </View>
-            <View style={styles.feedContent}>
-              <Text style={styles.feedTitle}>React Context API Lesson</Text>
-              <Text style={styles.feedDesc}>Completed \u2022 2h ago</Text>
-            </View>
-            <View style={styles.feedCheck}>
-              <Feather name="check" size={12} color="#f97316" />
-            </View>
-          </View>
-
-          <View style={styles.feedItem}>
-            <View style={styles.feedIconBox}>
-              <Feather name="zap" size={18} color="#f97316" />
-            </View>
-            <View style={styles.feedContent}>
-              <Text style={styles.feedTitle}>Consistent Learner</Text>
-              <Text style={styles.feedDesc}>7 day session streak \u2022 1d ago</Text>
-            </View>
-            <Feather name="chevron-right" size={16} color="#334155" />
-          </View>
-
-          <View style={styles.feedItem}>
-            <View style={styles.feedIconBox}>
-              <MaterialCommunityIcons name="brain" size={18} color="#f97316" />
-            </View>
-            <View style={styles.feedContent}>
-              <Text style={styles.feedTitle}>System Design Quiz</Text>
-              <Text style={styles.feedDesc}>Completed \u2022 2d ago</Text>
-            </View>
-            <View style={styles.feedCheck}>
-              <Feather name="check" size={12} color="#f97316" />
-            </View>
-          </View>
+          ))}
+          {recentActivities.length === 0 && (
+            <Text style={{ color: '#64748B', textAlign: 'center', marginVertical: 20 }}>No sessions yet</Text>
+          )}
         </View>
       </ScrollView>
 
@@ -211,7 +320,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 300,
-    backgroundColor: 'rgba(249, 115, 22, 0.05)', // simulated top gradient
   },
   header: {
     paddingHorizontal: 24,
@@ -259,10 +367,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 24,
     paddingBottom: 140,
-    gap: 32,
+    gap: 24,
   },
   sectionHeader: {
-    marginTop: 8,
+    marginTop: 14,
   },
   sectionTitle: {
     fontSize: 10,
@@ -276,17 +384,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1E293B',
     borderRadius: 32,
-    padding: 24,
+    paddingHorizontal: 23,
+    paddingVertical: 18,
   },
   heatmapGrid: {
+    width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    justifyContent: 'center',
+    gap: 8,
+    justifyContent: 'flex-start',
   },
   heatmapSquare: {
-    width: (280 - (9 * 6)) / 10, // approximate for 10 columns
-    aspectRatio: 1,
+    width: SQUARE_SIZE,
+    height: SQUARE_SIZE,
     borderRadius: 4,
   },
   heatmapSquareHighlight: {
@@ -297,7 +407,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   heatmapLegend: {
-    marginTop: 16,
+    marginTop: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -387,10 +497,65 @@ const styles = StyleSheet.create({
   barFillActive: {
     backgroundColor: '#f97316',
     shadowColor: '#f97316',
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.6,
     shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 10,
-    elevation: 4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  tooltip: {
+    position: 'absolute',
+    marginBottom: 8,
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    minWidth: 44,
+  },
+  tooltipText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  tooltipArrow: {
+    position: 'absolute',
+    bottom: -4,
+    width: 8,
+    height: 8,
+    backgroundColor: '#1E293B',
+    transform: [{ rotate: '45deg' }],
+    borderBottomWidth: 1,
+    borderRightWidth: 1,
+    borderColor: '#334155',
+  },
+  heatmapTooltip: {
+    position: 'absolute',
+    bottom: SQUARE_SIZE + 10,
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    minWidth: 120,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  tooltipSubText: {
+    color: '#94A3B8',
+    fontSize: 9,
+    fontWeight: '600',
+    marginTop: 2,
   },
   chartLabels: {
     flexDirection: 'row',
@@ -449,3 +614,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+

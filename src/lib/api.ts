@@ -1,18 +1,42 @@
 import axios, { AxiosError } from 'axios';
 import { useAuthStore } from '../store/auth';
+import type { Lesson } from '../store/lessons';
+import type { Module } from '../store/modules';
 import type { Question } from '../store/session';
 import { API_BASE_URL } from './config';
-import type { Module } from '../store/modules';
-import type { Lesson } from '../store/lessons';
 
 export type ApiUser = {
   id: string;
   email: string;
-  name: string;
-  streakCount: number;
+  currentStreak: number;
+  longestStreak: number;
   lastSessionDate?: string | null;
-  vibePreference?: string;
   createdAt?: string;
+};
+
+export type LessonActivity = {
+  title: string;
+  created_at: string;
+  completed_at: string;
+};
+
+export type QuizActivity = {
+  topic_name: string;
+  created_at: string;
+  completed_at: string;
+};
+
+export type UserActivityData = {
+  day: string;
+  lessons: LessonActivity[];
+  quizes: QuizActivity[];
+  total_time: number; // in seconds
+};
+
+export type UserActivityInfo = {
+  active_streak: number;
+  highest_streak: number;
+  activity: UserActivityData[];
 };
 
 export type ApiTopic = {
@@ -36,41 +60,35 @@ export type ProgressUpdateResponse = {
   updatedModules: Module[];
 };
 
-type ApiQuestionRaw = {
+type ApiOption = {
   id: string;
-  topicId?: string;
-  format: string;
-  content: string;
-  options: unknown;
-  answer: string;
+  question_id: string;
+  index: number;
+  label: string;
   explanation: string;
-  tier?: number;
+  is_correct: boolean;
 };
 
-export function proficiencyToApi(level: 'beginner' | 'intermediate' | 'advanced'): string {
-  switch (level) {
-    case 'beginner':   return 'beginner';
-    case 'intermediate': return 'intermediate';
-    case 'advanced':   return 'advanced';
-    default:           return 'beginner';
-  }
-}
-
-function parseOptions(raw: unknown): any[] {
-  if (Array.isArray(raw)) return raw;
-  return [];
-}
+type ApiQuestionRaw = {
+  id: string;
+  index: number;
+  type: 'mcq' | 'true_false' | 'short_answer' | 'fill_blank';
+  question: string;
+  options: ApiOption[];
+  answer?: string;
+  explanation?: string;
+};
 
 export function mapSessionQuestion(q: ApiQuestionRaw): Question {
-  const fmt = q.format;
-  const safeFormat = (fmt === 'mcq' || fmt === 'true_false' || fmt === 'text' || fmt === 'speech')
-    ? fmt
+  const safeFormat = (q.type === 'mcq' || q.type === 'true_false' || q.type === 'short_answer' || q.type === 'fill_blank')
+    ? q.type
     : 'mcq';
+  
   return {
     id: q.id,
-    format: safeFormat,
-    question: q.content,
-    options: parseOptions(q.options),
+    format: safeFormat as any,
+    question: q.question,
+    options: q.options || [],
     answer: q.answer ?? '',
     explanation: q.explanation ?? '',
   };
@@ -179,6 +197,16 @@ export async function listTopics(): Promise<ApiTopic[]> {
   return data.data;
 }
 
+export async function getMe(): Promise<ApiUser> {
+  const { data } = await apiClient.get<{ success: boolean; data: ApiUser }>('/users/me');
+  return data.data;
+}
+
+export async function getActivity(): Promise<UserActivityInfo> {
+  const { data } = await apiClient.get<{ success: boolean; data: UserActivityInfo }>('/sessions/activity');
+  return data.data;
+}
+
 export async function createTopic(body: {
   title: string;
   familiarity_level: string;
@@ -191,11 +219,11 @@ export async function createTopic(body: {
 }
 
 export async function startSession(
-  topicId: string,
-  _mode?: 'text' | 'speech'
+  params: { topic_id: string; lesson_id?: string; quiz_mode?: string }
 ): Promise<{ session_id: string; questions: Question[] }> {
-  const { data } = await apiClient.get<{ success: boolean; data: { session_id: string; questions: ApiQuestionRaw[] } }>(
-    `/topics/${topicId}/session`
+  const { data } = await apiClient.post<{ success: boolean; data: { session_id: string; questions: ApiQuestionRaw[] } }>(
+    '/sessions/start',
+    params
   );
   return {
     session_id: data.data.session_id,
@@ -214,8 +242,11 @@ export async function submitAnswer(
   return data.data;
 }
 
-export async function completeSession(sessionId: string): Promise<void> {
-  await apiClient.post(`/sessions/${sessionId}/complete`);
+export async function completeSession(
+  sessionId: string, 
+  diagData?: { topic_id: string; answers: { question: Question; answer: string }[] }
+): Promise<void> {
+  await apiClient.post(`/sessions/${sessionId}/complete`, diagData);
 }
 
 export async function updateModuleStatus(moduleId: string, status: string): Promise<void> {
@@ -228,4 +259,8 @@ export async function updateProgress(lessonId: string): Promise<ProgressUpdateRe
     throw new Error("Failed to update progress");
   }
   return data.data;
+}
+
+export function proficiencyToApi(p: 'beginner' | 'intermediate' | 'advanced'): string {
+  return p;
 }

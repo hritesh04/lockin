@@ -15,7 +15,7 @@ export default function FloatingNavBar({ onAddPress, activeScreen }: FloatingNav
   return (
     <View style={[styles.navContainer, { bottom: Math.max(insets.bottom, 24) }]}>
       <View style={styles.navInner}>
-        <TouchableOpacity style={styles.navItem} onPress={()=> { activeScreen !== 'home' && router.push('/'); }}>
+        <TouchableOpacity style={styles.navItem} onPress={()=> { activeScreen !== 'home' && router.replace('/'); }}>
           <Feather name="home" size={24} color={activeScreen === "home" ? "#FFFFFF" : "#64748B"} />
         </TouchableOpacity>
         
