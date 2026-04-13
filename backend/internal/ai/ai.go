@@ -14,6 +14,8 @@ import (
 
 type LLMProvider interface {
 	GenerateRoadmap(ctx context.Context, prompt string) (string, error)
+	GenerateTopicQuestions(ctx context.Context, prompt string) (string, error)
+	EvaluateTopicSession(ctx context.Context, prompt string) (string, error)
 }
 
 type Generator struct {
@@ -60,6 +62,22 @@ type RoadmapOptionAI struct {
 	Label       string `json:"label"`
 	Explanation string `json:"explanation"`
 	IsCorrect   bool   `json:"is_correct"`
+}
+
+type TopicSessionAIResponse struct {
+	Questions []TopicQuestionAI `json:"questions"`
+}
+
+type TopicQuestionAI struct {
+	Index       int               `json:"index"`
+	Type        string            `json:"type"`
+	Question    string            `json:"question"`
+	Options     []RoadmapOptionAI `json:"options"`
+}
+
+type TopicEvaluationAIResponse struct {
+	NewTier   int    `json:"new_tier"`
+	NewRemark string `json:"new_remark"`
 }
 
 func (g *Generator) GenerateRoadmap(ctx context.Context, topicID string, topic string, proficiency string) error {
@@ -162,10 +180,56 @@ func (g *Generator) storeRoadmap(ctx context.Context, topicID string, roadmap mo
 	return tx.Commit(ctx)
 }
 
-func (g *Generator) GenerateQuiz(ctx context.Context, id string, topic string, proficiency string) {
-	// TODO: implement quiz generation
+func (g *Generator) GenerateTopicQuestions(ctx context.Context, topic string, tier int, remark string, quizMode string) ([]models.Question, error) {
+	prompt := g.buildTopicSessionPrompt(topic, tier, remark, quizMode)
+	start := time.Now()
+	log.Println("Generating Topic Questions for topic: ", topic, " Starting at ", start)
+	res, err := g.Provider.GenerateTopicQuestions(ctx, prompt)
+	if err != nil {
+		log.Println("Error generating topic questions:", err)
+		return nil, err
+	}
+	log.Println("Topic Questions generated successfully: ", time.Since(start))
+	var aiRes TopicSessionAIResponse
+	if err := json.Unmarshal([]byte(res), &aiRes); err != nil {
+		log.Println("Error parsing topic session JSON:", err)
+		return nil, fmt.Errorf("failed to parse topic session JSON: %w", err)
+	}
+
+	questions := make([]models.Question, len(aiRes.Questions))
+	for i, q := range aiRes.Questions {
+		questions[i] = models.Question{
+			ID:          uuid.New().String(),
+			Index:       q.Index,
+			Type:        models.QuestionType(q.Type),
+			Question:    q.Question,
+		}
+		for _, opt := range q.Options {
+			questions[i].Options = append(questions[i].Options, models.Option{
+				ID:          uuid.New().String(),
+				QuestionID:  questions[i].ID,
+				Index:       opt.Index,
+				Label:       opt.Label,
+				Explanation: opt.Explanation,
+				IsCorrect:   opt.IsCorrect,
+			})
+		}
+	}
+
+	return questions, nil
 }
 
-func (g *Generator) EvaluateQuiz(ctx context.Context, id string, topic string, proficiency string) {
-	// TODO: implement quiz evaluation
+func (g *Generator) EvaluateTopicSession(ctx context.Context, topic string, tier int, remark string, sessionData string) (int, string, error) {
+	prompt := g.buildTopicEvaluationPrompt(topic, tier, remark, sessionData)
+	res, err := g.Provider.EvaluateTopicSession(ctx, prompt)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var aiRes TopicEvaluationAIResponse
+	if err := json.Unmarshal([]byte(res), &aiRes); err != nil {
+		return 0, "", fmt.Errorf("failed to parse evaluation JSON: %w", err)
+	}
+
+	return aiRes.NewTier, aiRes.NewRemark, nil
 }

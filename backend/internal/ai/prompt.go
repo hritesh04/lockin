@@ -123,3 +123,70 @@ ROADMAP CONSTRUCTION RULES:
    the previous module's difficulty.
   `,topic,assessment)
 }
+
+func (g *Generator) buildTopicSessionPrompt(topic string, tier int, remark string, quizMode string) string {
+	modeInstruction := ""
+	switch quizMode {
+	case "options":
+		modeInstruction = "STRICT: Only generate 'mcq' and 'true_false' questions."
+	case "text":
+		modeInstruction = "STRICT: Only generate 'short_answer' and 'fill_blank' questions."
+	}
+
+	return fmt.Sprintf(`You are a tutor for a learning app. Your task is to generate a practice session on a specific topic.
+The session should be tailored to the user's current tier and progress remark.
+
+TOPIC: %s
+USER TIER: %d (Scale 1-10)
+USER PROGRESS REMARK: %s
+
+%s
+
+TIER DEFINITIONS:
+1 - No prior knowledge; unaware of the topic's key terms and concepts entirely.
+2 - Aware of a few key terms by name, understanding is surface-level or based on intuition rather than actual knowledge.
+3 - Familiar with most key terms by name, can give basic definitions for a few but understanding is mostly superficial with little grasp of how or why.
+4 - Basic understanding of most key concepts, can describe what they are but struggles to explain how they work or why they matter.
+5 -Solid understanding of most key concepts, can explain what they are and how they work, but has gaps in application, edge cases, and deeper mechanics.
+6 - Good grasp of most key concepts and solid understanding of the rest, can explain concepts clearly and apply them correctly in straightforward scenarios.
+7 - Strong understanding of almost all key concepts, comfortable with practical application and beginning to reason about how concepts interact with each other.
+8 - Deep understanding of almost all key concepts, can reason confidently about cross-concept interactions, identify non-obvious connections, and handle moderately complex problems that span multiple areas.
+9 - Complete understanding of most concepts with strong cross-domain knowledge, can tackle complex, multi-layered problems, reason through edge cases, and explain the trade-offs and implications of different approaches.
+10 - Complete understanding of almost all concepts with strong applied and theoretical cross-domain knowledge, capable of critical thinking, novel problem-solving, and arriving at well-reasoned solutions in unfamiliar or ambiguous scenarios.
+
+GENERATION RULES:
+- Generate 10 questions.
+- Tailor difficulty and concepts based on Tier and Remark.
+- For MCQ: exactly 4 options. One correct answer.
+- For true_false: exactly 2 options (True/False).
+`, topic, tier, remark, modeInstruction)
+}
+
+func (g *Generator) buildTopicEvaluationPrompt(topic string, tier int, remark string, results string) string {
+	return fmt.Sprintf(`You are an expert evaluator for a learning app. Your task is to evaluate a user's performance in a study session and update their progress.
+
+TOPIC: %s
+CURRENT TIER: %d (Scale 1-10)
+CURRENT REMARK: %s
+
+TIER DEFINITIONS:
+1 - No prior knowledge; unaware of the topic's key terms and concepts entirely.
+2 - Aware of a few key terms by name, understanding is surface-level or based on intuition rather than actual knowledge.
+3 - Familiar with most key terms by name, can give basic definitions for a few but understanding is mostly superficial with little grasp of how or why.
+4 - Basic understanding of most key concepts, can describe what they are but struggles to explain how they work or why they matter.
+5 -Solid understanding of most key concepts, can explain what they are and how they work, but has gaps in application, edge cases, and deeper mechanics.
+6 - Good grasp of most key concepts and solid understanding of the rest, can explain concepts clearly and apply them correctly in straightforward scenarios.
+7 - Strong understanding of almost all key concepts, comfortable with practical application and beginning to reason about how concepts interact with each other.
+8 - Deep understanding of almost all key concepts, can reason confidently about cross-concept interactions, identify non-obvious connections, and handle moderately complex problems that span multiple areas.
+9 - Complete understanding of most concepts with strong cross-domain knowledge, can tackle complex, multi-layered problems, reason through edge cases, and explain the trade-offs and implications of different approaches.
+10 - Complete understanding of almost all concepts with strong applied and theoretical cross-domain knowledge, capable of critical thinking, novel problem-solving, and arriving at well-reasoned solutions in unfamiliar or ambiguous scenarios.
+
+SESSION RESULTS (Questions and User Answers):
+%s
+
+EVALUATION RULES:
+1. Analyze the performance on each question.
+2. Determine if the user should advance to a higher tier, stay at the current tier, or revisit earlier concepts.
+3. Provide a new Tier (integer 1-10) and a brief Remark (single actionable sentence) about their current progress.
+`, topic, tier, remark, results)
+}

@@ -107,7 +107,7 @@ func (g *GeminiClient) GenerateRoadmap(ctx context.Context, prompt string) (stri
 													Type: genai.TypeArray,
 													Items: &genai.Schema{
 														Type:     genai.TypeObject,
-														Required: []string{"label", "index","explanation"},
+														Required: []string{"label", "index","explanation","is_correct"},
 														Properties: map[string]*genai.Schema{
 															"label": {
 																Type: genai.TypeString,
@@ -137,6 +137,100 @@ func (g *GeminiClient) GenerateRoadmap(ctx context.Context, prompt string) (stri
 						},
 					},
 				},
+			},
+		},
+	}
+
+	res, err :=  g.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", genai.Text(prompt), &genai.GenerateContentConfig{
+		ResponseMIMEType: "application/json",
+		ResponseSchema:   schema,
+	})
+	if err != nil {
+		return "",err
+	}
+	fmt.Printf("%+v",res.Text())
+	return res.Text(),nil
+}
+
+func (g *GeminiClient) GenerateTopicQuestions(ctx context.Context, prompt string) (string, error) {
+	schema := &genai.Schema{
+		Type:     genai.TypeObject,
+		Required: []string{"questions"},
+		Properties: map[string]*genai.Schema{
+			"questions": {
+				Type: genai.TypeArray,
+				Items: &genai.Schema{
+					Type:     genai.TypeObject,
+					Required: []string{"index", "type", "question"},
+					Properties: map[string]*genai.Schema{
+						"index": {
+							Type:        genai.TypeInteger,
+							Description: "Order of the question in the quiz",
+						},
+						"type": {
+							Type: genai.TypeString,
+							Enum: []string{"mcq", "true_false", "fill_blank", "short_answer"},
+							Description: "Type of question",
+						},
+						"question": {
+							Type:        genai.TypeString,
+							Description: "The question text",
+						},
+						"options": {
+							Type: genai.TypeArray,
+							Items: &genai.Schema{
+								Type:     genai.TypeObject,
+								Required: []string{"label", "index","explanation","is_correct"},
+								Properties: map[string]*genai.Schema{
+									"label": {
+										Type: genai.TypeString,
+										Description: "The label of the option",
+									},
+									"index": {
+										Type: genai.TypeInteger,
+										Description: "Order of the option in the options",
+									},
+									"explanation": {
+										Type:        genai.TypeString,
+										Description: "Why this option is correct/incorrect",
+									},
+									"is_correct": {
+										Type: genai.TypeBoolean,
+										Description: "Whether this option is correct",
+									},
+								},
+							},
+							Description: "Answer options (required for mcq and true_false, ignored otherwise)",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	res, err :=  g.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", genai.Text(prompt), &genai.GenerateContentConfig{
+		ResponseMIMEType: "application/json",
+		ResponseSchema:   schema,
+	})
+	if err != nil {
+		return "",err
+	}
+	fmt.Printf("%+v",res.Text())
+	return res.Text(),nil
+}
+
+func (g *GeminiClient) EvaluateTopicSession(ctx context.Context, prompt string) (string, error) {
+	schema := &genai.Schema{
+		Type:     genai.TypeObject,
+		Required: []string{"new_tier", "new_remark"},
+		Properties: map[string]*genai.Schema{
+			"new_tier": {
+				Type: genai.TypeInteger,
+				Description: "The new user knowledge tier for the topic",
+			},
+			"new_remark": {
+				Type: genai.TypeString,
+				Description: "The new remark of user's knowledge for the topic",
 			},
 		},
 	}
