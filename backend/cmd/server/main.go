@@ -46,10 +46,10 @@ func main() {
 	defer db.Close()
 
 	app := fiber.New()
-	// app.Use(logger.New())
-	app.Use(logger.New(logger.Config{
-        Format: "[${time}] ${status} - ${latency} ${method} ${path}\nReqBody: ${body}\nResBody: ${resBody}\n",
-    }))
+	app.Use(logger.New())
+	// app.Use(logger.New(logger.Config{
+    //     Format: "[${time}] ${status} - ${latency} ${method} ${path}\nReqBody: ${body}\nResBody: ${resBody}\n",
+    // }))
 	// CORS middleware for mobile client
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
