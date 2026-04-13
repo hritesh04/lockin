@@ -80,7 +80,7 @@ func main() {
 	topicService := service.NewTopicService(topicRepo, aiGen)
 	moduleService := service.NewModuleService(moduleRepo)
 	lessonService := service.NewLessonService(lessonRepo, moduleRepo)
-	sessionService := service.NewSessionService(sessionRepo)
+	sessionService := service.NewSessionService(sessionRepo, topicRepo, userRepo, aiGen)
 
 	// Initialize API Handler
 	apiHandler := handlers.NewAPIHandler(authService, topicService, moduleService, lessonService, sessionService)
@@ -99,7 +99,6 @@ func main() {
 	topicsGroup.Post("/", apiHandler.CreateTopic)
 	topicsGroup.Get("/:id", apiHandler.GetTopic)
 	topicsGroup.Get("/roadmap/:id", apiHandler.GetRoadmap)
-	topicsGroup.Post("/:id/session", apiHandler.StartSession)
 
 	moduleGroup := api.Group("/modules", middleware.Protected())
 	moduleGroup.Post("/status/:id", apiHandler.UpdateModuleStatus)
@@ -109,7 +108,9 @@ func main() {
 
 
 	sessionsGroup := api.Group("/sessions", middleware.Protected())
+	sessionsGroup.Post("/start", apiHandler.StartSession)
 	sessionsGroup.Post("/:id/complete", apiHandler.CompleteSession)
+	sessionsGroup.Get("/activity", apiHandler.GetUserActivity)
 
 
 

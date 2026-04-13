@@ -229,6 +229,88 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/sessions/activity": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the last 7 days activity of the user.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Get last 7 days activity",
+                "responses": {
+                    "200": {
+                        "description": "Activity data",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.GetUserActivityResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/start": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new quiz session. If lesson_id is provided, it uses existing questions. Otherwise, it generates questions via AI.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Start a quiz session",
+                "parameters": [
+                    {
+                        "description": "Session configuration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.StartSessionReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session ID and questions",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.StartSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/sessions/{id}/complete": {
             "post": {
                 "security": [
@@ -236,7 +318,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Marks a quiz session as completed by setting the completed_at timestamp",
+                "description": "Marks a quiz session as completed. If answers are provided, it triggers AI evaluation.",
                 "produces": [
                     "application/json"
                 ],
@@ -251,6 +333,15 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Performance data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.CompleteSessionReq"
+                        }
                     }
                 ],
                 "responses": {
@@ -422,64 +513,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Topic not found",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/topics/{id}/session": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Creates a new quiz session for a module node under a topic. Fetches up to 10 questions with their options.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sessions"
-                ],
-                "summary": "Start a quiz session",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Topic UUID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Session configuration",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers.StartSessionReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Session ID and questions",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers.StartSessionResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid input or not enough questions",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
@@ -737,6 +770,9 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "currentStreak": {
+                    "type": "integer"
+                },
                 "deletedAt": {
                     "type": "string"
                 },
@@ -764,9 +800,6 @@ const docTemplate = `{
                 "token": {
                     "type": "string",
                     "example": "eyJhbGciOiJIUzI1NiIs..."
-                },
-                "user": {
-                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.User"
                 }
             }
         },
@@ -788,6 +821,20 @@ const docTemplate = `{
                 "status": {
                     "type": "string",
                     "example": "completed"
+                }
+            }
+        },
+        "internal_handlers.CompleteSessionReq": {
+            "type": "object",
+            "properties": {
+                "answers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers.UserAnswer"
+                    }
+                },
+                "topic_id": {
+                    "type": "string"
                 }
             }
         },
@@ -854,6 +901,32 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers.GetUserActivityResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers.UserActivityInfo"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.LessonActivity": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handlers.LoginReq": {
             "type": "object",
             "properties": {
@@ -864,6 +937,20 @@ const docTemplate = `{
                 "password": {
                     "type": "string",
                     "example": "supersecret"
+                }
+            }
+        },
+        "internal_handlers.QuizActivity": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "topic_name": {
+                    "type": "string"
                 }
             }
         },
@@ -944,14 +1031,18 @@ const docTemplate = `{
         "internal_handlers.StartSessionReq": {
             "type": "object",
             "properties": {
-                "node_id": {
+                "lesson_id": {
                     "type": "string",
                     "example": "550e8400-e29b-41d4-a716-446655440000"
                 },
                 "quiz_mode": {
-                    "description": "mcq, text, speech, mixed",
+                    "description": "options, text, lesson",
                     "type": "string",
-                    "example": "mcq"
+                    "example": "options"
+                },
+                "topic_id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
                 }
             }
         },
@@ -999,6 +1090,60 @@ const docTemplate = `{
             "properties": {
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers.UserActivityData": {
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "string"
+                },
+                "lessons": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers.LessonActivity"
+                    }
+                },
+                "quizes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers.QuizActivity"
+                    }
+                },
+                "total_time": {
+                    "description": "in seconds",
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handlers.UserActivityInfo": {
+            "type": "object",
+            "properties": {
+                "active_streak": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "activity": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers.UserActivityData"
+                    }
+                },
+                "highest_streak": {
+                    "type": "integer",
+                    "example": 10
+                }
+            }
+        },
+        "internal_handlers.UserAnswer": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string"
+                },
+                "question": {
+                    "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Question"
                 }
             }
         },

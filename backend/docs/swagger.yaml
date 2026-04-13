@@ -146,6 +146,8 @@ definitions:
     properties:
       createdAt:
         type: string
+      currentStreak:
+        type: integer
       deletedAt:
         type: string
       email:
@@ -165,8 +167,6 @@ definitions:
       token:
         example: eyJhbGciOiJIUzI1NiIs...
         type: string
-      user:
-        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.User'
     type: object
   internal_handlers.AuthTokenResponse:
     properties:
@@ -180,6 +180,15 @@ definitions:
     properties:
       status:
         example: completed
+        type: string
+    type: object
+  internal_handlers.CompleteSessionReq:
+    properties:
+      answers:
+        items:
+          $ref: '#/definitions/internal_handlers.UserAnswer'
+        type: array
+      topic_id:
         type: string
     type: object
   internal_handlers.CompleteSessionResponse:
@@ -225,6 +234,23 @@ definitions:
         example: false
         type: boolean
     type: object
+  internal_handlers.GetUserActivityResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers.UserActivityInfo'
+      success:
+        example: true
+        type: boolean
+    type: object
+  internal_handlers.LessonActivity:
+    properties:
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      title:
+        type: string
+    type: object
   internal_handlers.LoginReq:
     properties:
       email:
@@ -232,6 +258,15 @@ definitions:
         type: string
       password:
         example: supersecret
+        type: string
+    type: object
+  internal_handlers.QuizActivity:
+    properties:
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      topic_name:
         type: string
     type: object
   internal_handlers.RefreshReq:
@@ -286,12 +321,15 @@ definitions:
     type: object
   internal_handlers.StartSessionReq:
     properties:
-      node_id:
+      lesson_id:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
       quiz_mode:
-        description: mcq, text, speech, mixed
-        example: mcq
+        description: options, text, lesson
+        example: options
+        type: string
+      topic_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
         type: string
     type: object
   internal_handlers.StartSessionResponse:
@@ -324,6 +362,42 @@ definitions:
     properties:
       status:
         type: string
+    type: object
+  internal_handlers.UserActivityData:
+    properties:
+      day:
+        type: string
+      lessons:
+        items:
+          $ref: '#/definitions/internal_handlers.LessonActivity'
+        type: array
+      quizes:
+        items:
+          $ref: '#/definitions/internal_handlers.QuizActivity'
+        type: array
+      total_time:
+        description: in seconds
+        type: integer
+    type: object
+  internal_handlers.UserActivityInfo:
+    properties:
+      active_streak:
+        example: 3
+        type: integer
+      activity:
+        items:
+          $ref: '#/definitions/internal_handlers.UserActivityData'
+        type: array
+      highest_streak:
+        example: 10
+        type: integer
+    type: object
+  internal_handlers.UserAnswer:
+    properties:
+      answer:
+        type: string
+      question:
+        $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Question'
     type: object
   internal_handlers.UserResponse:
     properties:
@@ -484,13 +558,20 @@ paths:
       - modules
   /sessions/{id}/complete:
     post:
-      description: Marks a quiz session as completed by setting the completed_at timestamp
+      description: Marks a quiz session as completed. If answers are provided, it
+        triggers AI evaluation.
       parameters:
       - description: Session UUID
         in: path
         name: id
         required: true
         type: string
+      - description: Performance data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.CompleteSessionReq'
       produces:
       - application/json
       responses:
@@ -505,6 +586,58 @@ paths:
       security:
       - BearerAuth: []
       summary: Complete a session
+      tags:
+      - sessions
+  /sessions/activity:
+    get:
+      description: Returns the last 7 days activity of the user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Activity data
+          schema:
+            $ref: '#/definitions/internal_handlers.GetUserActivityResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get last 7 days activity
+      tags:
+      - sessions
+  /sessions/start:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new quiz session. If lesson_id is provided, it uses existing
+        questions. Otherwise, it generates questions via AI.
+      parameters:
+      - description: Session configuration
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.StartSessionReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session ID and questions
+          schema:
+            $ref: '#/definitions/internal_handlers.StartSessionResponse'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Start a quiz session
       tags:
       - sessions
   /topics:
@@ -585,44 +718,6 @@ paths:
       summary: Get a topic
       tags:
       - topics
-  /topics/{id}/session:
-    post:
-      consumes:
-      - application/json
-      description: Creates a new quiz session for a module node under a topic. Fetches
-        up to 10 questions with their options.
-      parameters:
-      - description: Topic UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Session configuration
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/internal_handlers.StartSessionReq'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Session ID and questions
-          schema:
-            $ref: '#/definitions/internal_handlers.StartSessionResponse'
-        "400":
-          description: Invalid input or not enough questions
-          schema:
-            $ref: '#/definitions/internal_handlers.ErrorResponse'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/internal_handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Start a quiz session
-      tags:
-      - sessions
   /topics/roadmap/{id}:
     get:
       description: Fetches the learning roadmap (modules and lessons) for a topic
