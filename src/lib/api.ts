@@ -5,6 +5,13 @@ import type { Module } from '../store/modules';
 import type { Question } from '../store/session';
 import { API_BASE_URL } from './config';
 
+/** Returns true if the error was caused by an AbortController.abort() call. */
+export function isAbortError(error: unknown): boolean {
+  if (axios.isCancel(error)) return true;
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  return false;
+}
+
 export type ApiUser = {
   id: string;
   email: string;
@@ -183,47 +190,97 @@ apiClient.interceptors.response.use(
 
 export async function login(
   email: string,
-  password: string
-): Promise<{ token: string; refresh_token: string; user: ApiUser }> {
-  const { data } = await apiClient.post<{ success: boolean; data: { token: string; refresh_token: string; user: ApiUser } }>(
+  password: string,
+  signal?: AbortSignal
+): Promise<{ token: string; refresh_token: string; }> {
+  const { data } = await apiClient.post<{ success: boolean; data: { token: string; refresh_token: string; } }>(
     '/auth/login',
-    { email, password }
+    { email, password },
+    { signal }
   );
   return data.data;
 }
 
-export async function listTopics(): Promise<ApiTopic[]> {
-  const { data } = await apiClient.get<{ success: boolean; data: ApiTopic[] }>('/topics');
+export async function register(
+  email: string,
+  password: string,
+  signal?: AbortSignal
+): Promise<{ token: string; refresh_token: string; }> {
+  const { data } = await apiClient.post<{ success: boolean; data: { token: string; refresh_token: string; } }>(
+    '/auth/register',
+    { email, password },
+    { signal }
+  );
   return data.data;
 }
 
-export async function getMe(): Promise<ApiUser> {
-  const { data } = await apiClient.get<{ success: boolean; data: ApiUser }>('/users/me');
+export async function forgotPassword(
+  email: string,
+  signal?: AbortSignal
+): Promise<void> {
+  await apiClient.post(
+    '/auth/forgot-password',
+    { email },
+    { signal }
+  );
+}
+
+export async function listTopics(signal?: AbortSignal): Promise<ApiTopic[]> {
+  const { data } = await apiClient.get<{ success: boolean; data: ApiTopic[] }>('/topics', { signal });
   return data.data;
 }
 
-export async function getActivity(): Promise<UserActivityInfo> {
-  const { data } = await apiClient.get<{ success: boolean; data: UserActivityInfo }>('/sessions/activity');
+export async function getMe(signal?: AbortSignal): Promise<ApiUser> {
+  const { data } = await apiClient.get<{ success: boolean; data: ApiUser }>('/users/me', { signal });
+  return data.data;
+}
+
+export async function getActivity(signal?: AbortSignal): Promise<UserActivityInfo> {
+  const { data } = await apiClient.get<{ success: boolean; data: UserActivityInfo }>('/sessions/activity', { signal });
   return data.data;
 }
 
 export async function createTopic(body: {
   title: string;
   familiarity_level: string;
-}): Promise<{ topic: ApiTopic; status: string }> {
+}, signal?: AbortSignal): Promise<{ topic: ApiTopic; status: string }> {
   const { data } = await apiClient.post<{ data: { topic: ApiTopic; status: string } }>(
     '/topics',
-    body
+    body,
+    { signal }
+  );
+  return data.data;
+}
+
+export type RoadmapModule = Module & {
+  lessons?: (Lesson & { nodeId?: string })[];
+};
+
+export type ApiRoadmap = {
+  id: string;
+  title: string;
+  tier: number;
+  sessionsCompleted: number;
+  totalTimeSeconds: number;
+  modules: RoadmapModule[];
+};
+
+export async function getRoadmap(topicId: string, signal?: AbortSignal): Promise<ApiRoadmap> {
+  const { data } = await apiClient.get<{ success: boolean; data: ApiRoadmap }>(
+    `/topics/roadmap/${topicId}`,
+    { signal }
   );
   return data.data;
 }
 
 export async function startSession(
-  params: { topic_id: string; lesson_id?: string; quiz_mode?: string }
+  params: { topic_id: string; lesson_id?: string; quiz_mode?: string },
+  signal?: AbortSignal
 ): Promise<{ session_id: string; questions: Question[] }> {
   const { data } = await apiClient.post<{ success: boolean; data: { session_id: string; questions: ApiQuestionRaw[] } }>(
     '/sessions/start',
-    params
+    params,
+    { signal }
   );
   return {
     session_id: data.data.session_id,
@@ -233,28 +290,31 @@ export async function startSession(
 
 export async function submitAnswer(
   sessionId: string,
-  payload: { question_id: string; selected_answer: string }
+  payload: { question_id: string; selected_answer: string },
+  signal?: AbortSignal
 ): Promise<SubmitAnswerResponse> {
   const { data } = await apiClient.post<{ success: boolean; data: SubmitAnswerResponse }>(
     `/sessions/${sessionId}/answer`,
-    payload
+    payload,
+    { signal }
   );
   return data.data;
 }
 
 export async function completeSession(
   sessionId: string, 
-  diagData?: { topic_id: string; answers: { question: Question; answer: string }[] }
+  diagData?: { topic_id: string; answers: { question: Question; answer: string }[] },
+  signal?: AbortSignal
 ): Promise<void> {
-  await apiClient.post(`/sessions/${sessionId}/complete`, diagData);
+  await apiClient.post(`/sessions/${sessionId}/complete`, diagData, { signal });
 }
 
-export async function updateModuleStatus(moduleId: string, status: string): Promise<void> {
-  await apiClient.post(`/modules/status/${moduleId}`, { status });
+export async function updateModuleStatus(moduleId: string, status: string, signal?: AbortSignal): Promise<void> {
+  await apiClient.post(`/modules/status/${moduleId}`, { status }, { signal });
 }
 
-export async function updateProgress(lessonId: string): Promise<ProgressUpdateResponse> {
-  const { data } = await apiClient.post<{ success: boolean; data: ProgressUpdateResponse }>(`/lessons/progress/${lessonId}`);
+export async function updateProgress(lessonId: string, signal?: AbortSignal): Promise<ProgressUpdateResponse> {
+  const { data } = await apiClient.post<{ success: boolean; data: ProgressUpdateResponse }>(`/lessons/progress/${lessonId}`, undefined, { signal });
   if (!data.success){
     throw new Error("Failed to update progress");
   }

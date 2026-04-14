@@ -8,6 +8,7 @@ export interface Topic {
   accuracyPercent: number;
   sessionsCompleted: number;
   weakConcepts: string[];
+  status: string;
 }
 
 interface TopicsState {

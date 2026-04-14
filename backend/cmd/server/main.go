@@ -115,6 +115,7 @@ func main() {
 	authGroup.Post("/register", apiHandler.Register)
 	authGroup.Post("/login", apiHandler.Login)
 	authGroup.Post("/refresh", apiHandler.RefreshToken)
+	authGroup.Post("/forgot-password", apiHandler.ForgotPassword)
 
 	usersGroup := api.Group("/users", middleware.Protected())
 	usersGroup.Get("/me", apiHandler.GetMe)

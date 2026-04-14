@@ -21,6 +21,11 @@ type RefreshReq struct {
 	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIs..."`
 }
 
+// ForgotPasswordReq is the request body for /auth/forgot-password
+type ForgotPasswordReq struct {
+	Email string `json:"email" example:"user@example.com"`
+}
+
 // Register godoc
 // @Summary      Register a new user
 // @Description  Creates a new user account and returns access + refresh tokens
@@ -132,5 +137,31 @@ func (h *APIHandler) GetMe(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data":    user,
+	})
+}
+
+// ForgotPassword godoc
+// @Summary      Request password reset
+// @Description  Sends a password reset token to the user's email (simulated)
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      ForgotPasswordReq  true  "Email address"
+// @Success      200   {object}  SuccessResponse    "Reset request processed"
+// @Failure      400   {object}  ErrorResponse      "Invalid request payload"
+// @Router       /auth/forgot-password [post]
+func (h *APIHandler) ForgotPassword(c *fiber.Ctx) error {
+	var req ForgotPasswordReq
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
+	}
+
+	if err := h.Auth.ForgotPassword(c.Context(), req.Email); err != nil {
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Internal server error"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "If an account exists with that email, a reset link has been sent.",
 	})
 }

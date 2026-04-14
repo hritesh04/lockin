@@ -92,3 +92,16 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (st
 func (s *authService) GetMe(ctx context.Context, userID string) (models.User, error) {
 	return s.repo.GetUserByID(ctx, userID)
 }
+
+func (s *authService) ForgotPassword(ctx context.Context, email string) error {
+	user, _, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil
+	}
+
+	// TODO
+	resetToken := lib.GenerateRandomString(16)
+	println("[EMAIL] To: " + user.Email + " Reset Token: " + resetToken)
+
+	return nil
+}

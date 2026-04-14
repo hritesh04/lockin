@@ -22,6 +22,7 @@ type AuthService interface {
 	Login(ctx context.Context, email, password string) (string, string, error)
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetMe(ctx context.Context, userID string) (models.User, error)
+	ForgotPassword(ctx context.Context, email string) error
 }
 
 type TopicService interface {

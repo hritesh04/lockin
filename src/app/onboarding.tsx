@@ -1,4 +1,4 @@
-import { Feather, FontAwesome5, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -8,13 +8,11 @@ import { useUserStore } from '../store/user';
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const GOALS = [
-  { id: 'career', title: 'Career Growth', desc: 'Advance your professional skill set.' },
-  { id: 'academic', title: 'Academic Excellence', desc: 'Master your studies with focus.' },
   { id: 'personal', title: 'Personal Interest', desc: 'Learn something new everyday.' },
+  { id: 'academic', title: 'Academic Excellence', desc: 'Master your studies with focus.' },
+  { id: 'career', title: 'Career Growth', desc: 'Advance your professional skill set.' },
   { id: 'mental', title: 'Mental Sharpness', desc: 'Keep your cognitive edge sharp.' },
 ];
-
-const DURATIONS = [5, 10, 20, 30];
 
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
@@ -30,10 +28,6 @@ export default function OnboardingScreen() {
   const goToSlide = (index: number) => {
     setCurrentIndex(index);
     scrollRef.current?.scrollTo({ y: index * SCREEN_HEIGHT, animated: true });
-  };
-
-  const skipToEnd = () => {
-    goToSlide(3);
   };
 
   const handleStart = () => {
@@ -68,35 +62,7 @@ export default function OnboardingScreen() {
         scrollEventThrottle={16}
         bounces={false}
       >
-        {/* Slide 1 */}
-        <View style={[{ height: SCREEN_HEIGHT, paddingBottom: insets.bottom }, styles.slide]}>
-          <TouchableOpacity style={[styles.skipBtn, { top: insets.top + 16 }]} onPress={skipToEnd}>
-            <Text style={styles.skipText}>SKIP</Text>
-          </TouchableOpacity>
-
-          <View style={[styles.heroTop, { paddingTop: insets.top }]}>
-            <View style={styles.iconCircle}>
-              <FontAwesome5 name="graduation-cap" size={56} color="#0F172A" />
-            </View>
-          </View>
-
-          <View style={styles.slideContent}>
-            <View>
-              <Text style={styles.heading}>Master Your Focus with LockIn.</Text>
-              <Text style={styles.subheading}>Intense learning sessions designed for the disciplined mind.</Text>
-            </View>
-            <TouchableOpacity style={styles.btnPrimary} onPress={() => goToSlide(1)} activeOpacity={0.8}>
-              <Text style={styles.btnPrimaryText}>Get Started</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Slide 2 */}
         <View style={[{ height: SCREEN_HEIGHT, paddingTop: insets.top, paddingBottom: insets.bottom }, styles.slide]}>
-          <TouchableOpacity style={[styles.skipBtn, { top: insets.top + 16 }]} onPress={skipToEnd}>
-            <Text style={styles.skipText}>SKIP</Text>
-          </TouchableOpacity>
-
           <View style={styles.headerBlock}>
             <Text style={styles.overline}>Your Journey</Text>
             <Text style={styles.title}>What's your goal?</Text>
@@ -123,76 +89,8 @@ export default function OnboardingScreen() {
               );
             })}
           </View>
-
-          <View style={styles.bottomBlock}>
-            <TouchableOpacity style={styles.btnPrimary} onPress={() => goToSlide(2)} activeOpacity={0.8}>
-              <Text style={styles.btnPrimaryText}>Next Step</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Slide 3 */}
-        <View style={[{ height: SCREEN_HEIGHT, paddingTop: insets.top, paddingBottom: insets.bottom }, styles.slide]}>
-          <TouchableOpacity style={[styles.skipBtn, { top: insets.top + 16 }]} onPress={skipToEnd}>
-            <Text style={styles.skipText}>SKIP</Text>
-          </TouchableOpacity>
-
-          <View style={styles.headerBlock}>
-            <Text style={styles.overline}>Commitment</Text>
-            <Text style={styles.title}>How long do you want to study each day?</Text>
-          </View>
-
-          <View style={styles.durationRow}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 32, gap: 12 }}>
-              {DURATIONS.map(dur => {
-                const isActive = activeDuration === dur;
-                return (
-                  <TouchableOpacity
-                    key={dur}
-                    onPress={() => setActiveDuration(dur)}
-                    style={[styles.durPill, isActive && styles.durPillActive]}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.durText, isActive && styles.durTextActive]}>{dur} min</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          <View style={styles.centerGraphic}>
-            <View style={styles.clockCircle}>
-              <Feather name="clock" size={56} color="#F97316" />
-            </View>
-            <Text style={styles.graphicText}>Daily streaks lead to long-term mastery.</Text>
-          </View>
-
-          <View style={styles.bottomBlock}>
-            <TouchableOpacity style={styles.btnPrimary} onPress={() => goToSlide(3)} activeOpacity={0.8}>
-              <Text style={styles.btnPrimaryText}>Continue</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Slide 4 */}
-        <View style={[{ height: SCREEN_HEIGHT, paddingTop: insets.top, paddingBottom: insets.bottom }, styles.slide]}>
-          <View style={styles.slide4Center}>
-            <View style={styles.flameCircle}>
-              <Ionicons name="flame-outline" size={56} color="#F97316" />
-            </View>
-            <Text style={styles.headingCenter}>You're all set.</Text>
-            <Text style={styles.subheadingCenter}>We've prepared your {activeDuration}-minute daily sessions to build your focus streak.</Text>
-          </View>
-
-          <View style={styles.bottomBlock}>
-            <TouchableOpacity style={styles.btnPrimary} onPress={handleStart} activeOpacity={0.8}>
-              <Text style={styles.btnPrimaryText}>Start Learning</Text>
-            </TouchableOpacity>
-            <View style={{ height: 16 }} />
-          </View>
         </View>
       </ScrollView>
-
       {renderDots()}
     </View>
   );
