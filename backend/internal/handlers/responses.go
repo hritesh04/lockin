@@ -9,6 +9,11 @@ type ErrorResponse struct {
 	Error   string `json:"error" example:"something went wrong"`
 }
 
+type SuccessResponse struct {
+	Success bool   `json:"success" example:"true"`
+	Message string `json:"message" example:"operation successful"`
+}
+
 type AuthTokenData struct {
 	Token        string `json:"token" example:"eyJhbGciOiJIUzI1NiIs..."`
 	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIs..."`

@@ -122,6 +122,8 @@ definitions:
         type: string
       remark:
         type: string
+      status:
+        type: string
       tier:
         type: integer
       title:
@@ -137,10 +139,14 @@ definitions:
         items:
           $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Module'
         type: array
+      sessionsCompleted:
+        type: integer
       tier:
         type: integer
       title:
         type: string
+      totalTimeSeconds:
+        type: number
     type: object
   github_com_acerowl_lockin_backend_internal_models.User:
     properties:
@@ -233,6 +239,12 @@ definitions:
       success:
         example: false
         type: boolean
+    type: object
+  internal_handlers.ForgotPasswordReq:
+    properties:
+      email:
+        example: user@example.com
+        type: string
     type: object
   internal_handlers.GetUserActivityResponse:
     properties:
@@ -340,6 +352,15 @@ definitions:
         example: true
         type: boolean
     type: object
+  internal_handlers.SuccessResponse:
+    properties:
+      message:
+        example: operation successful
+        type: string
+      success:
+        example: true
+        type: boolean
+    type: object
   internal_handlers.TopicListResponse:
     properties:
       data:
@@ -420,6 +441,32 @@ info:
   title: LockIn API
   version: "1.0"
 paths:
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Sends a password reset token to the user's email (simulated)
+      parameters:
+      - description: Email address
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.ForgotPasswordReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reset request processed
+          schema:
+            $ref: '#/definitions/internal_handlers.SuccessResponse'
+        "400":
+          description: Invalid request payload
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      summary: Request password reset
+      tags:
+      - auth
   /auth/login:
     post:
       consumes:

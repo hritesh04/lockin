@@ -22,6 +22,46 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/forgot-password": {
+            "post": {
+                "description": "Sends a password reset token to the user's email (simulated)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Request password reset",
+                "parameters": [
+                    {
+                        "description": "Email address",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ForgotPasswordReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Reset request processed",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request payload",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticates a user and returns access + refresh tokens",
@@ -733,6 +773,9 @@ const docTemplate = `{
                 "remark": {
                     "type": "string"
                 },
+                "status": {
+                    "type": "string"
+                },
                 "tier": {
                     "type": "integer"
                 },
@@ -756,11 +799,17 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Module"
                     }
                 },
+                "sessionsCompleted": {
+                    "type": "integer"
+                },
                 "tier": {
                     "type": "integer"
                 },
                 "title": {
                     "type": "string"
+                },
+                "totalTimeSeconds": {
+                    "type": "number"
                 }
             }
         },
@@ -898,6 +947,15 @@ const docTemplate = `{
                 "success": {
                     "type": "boolean",
                     "example": false
+                }
+            }
+        },
+        "internal_handlers.ForgotPasswordReq": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "user@example.com"
                 }
             }
         },
@@ -1051,6 +1109,19 @@ const docTemplate = `{
             "properties": {
                 "data": {
                     "$ref": "#/definitions/internal_handlers.StartSessionData"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handlers.SuccessResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "operation successful"
                 },
                 "success": {
                     "type": "boolean",
