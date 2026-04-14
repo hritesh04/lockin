@@ -1,11 +1,11 @@
 import { getRoadmap } from '@/lib/api';
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useModuleStore } from '../../../../store/modules';
 import { useLessonStore } from '../../../../store/lessons';
+import { useModuleStore } from '../../../../store/modules';
 
 export default function LessonScreen() {
   const { id, lessonId } = useLocalSearchParams();
@@ -24,11 +24,11 @@ export default function LessonScreen() {
 
       const controller = new AbortController();
       setLoading(true);
-      getRoadmap(id as string, controller.signal).then((modules) => {
-        setModules(modules.map((m: any) => ({ ...m, topicId: id })));
+      getRoadmap(id as string, controller.signal).then((data) => {
+        setModules(data.modules.map((m: any) => ({ ...m, topicId: id })));
         
         const allLessons: any[] = [];
-        modules.forEach((m: any) => {
+        data.modules.forEach((m: any) => {
           if (m.lessons) {
             allLessons.push(...m.lessons.map((l: any) => ({ ...l, nodeId: m.id })));
           }
