@@ -1,7 +1,7 @@
-import { apiClient } from '@/lib/api';
+import { getRoadmap } from '@/lib/api';
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useModuleStore } from '../../../../store/modules';
@@ -18,11 +18,13 @@ export default function LessonScreen() {
   const lesson = typeof lessonId === 'string' ? lessons[lessonId] : null;
   const [loading, setLoading] = useState(!lesson);
 
-  useEffect(() => {
-    if (!lesson && id) {
+  useFocusEffect(
+    useCallback(() => {
+      if (lesson || !id) return;
+
+      const controller = new AbortController();
       setLoading(true);
-      apiClient.get(`/topics/roadmap/${id}`).then((res) => {
-        const modules = res.data?.data?.modules || [];
+      getRoadmap(id as string, controller.signal).then((modules) => {
         setModules(modules.map((m: any) => ({ ...m, topicId: id })));
         
         const allLessons: any[] = [];
@@ -33,12 +35,16 @@ export default function LessonScreen() {
         });
         setLessons(allLessons);
       }).catch((err) => {
-        console.error("Failed to load lesson:", err);
+        if (!controller.signal.aborted) {
+          console.error("Failed to load lesson:", err);
+        }
       }).finally(() => {
         setLoading(false);
       });
-    }
-  }, [id, lessonId, lesson]);
+
+      return () => { controller.abort(); };
+    }, [id, lessonId, lesson])
+  );
 
   const handleProceed = () => {
     if (!lesson) return;

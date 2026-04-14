@@ -1,7 +1,7 @@
-import { apiClient } from '@/lib/api';
+import { getRoadmap } from '@/lib/api';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../store/auth';
@@ -24,32 +24,44 @@ export default function TopicDetailScreen() {
   
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({ sessionsCompleted: 0, totalTimeSeconds: 0 });
   
   const token = useAuthStore(state => state.token);
   
-  useEffect(()=>{
-    if (!token) return;
-    const targetId = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : null);
-    if (targetId) {
+  useFocusEffect(
+    useCallback(() => {
+      if (!token) return;
+      const targetId = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : null);
+      if (!targetId) return;
+
+      const controller = new AbortController();
       setLoading(true);
-      apiClient.get(`/topics/roadmap/${targetId}`).then((res)=>{
-        const modules = res.data.data.modules as any[];
-        setModules(modules.map(m => ({ ...m, topicId: targetId })));
+      getRoadmap(targetId, controller.signal).then((data) => {
+        setStats({
+          sessionsCompleted: data.sessionsCompleted,
+          totalTimeSeconds: data.totalTimeSeconds
+        });
+        
+        setModules(data.modules.map(m => ({ ...m, topicId: targetId })));
         
         const allLessons: any[] = [];
-        modules.forEach(m => {
+        data.modules.forEach(m => {
           if (m.lessons) {
             allLessons.push(...m.lessons.map((l: any) => ({ ...l, nodeId: m.id })));
           }
         });
         setLessons(allLessons);
       }).catch(err => {
-        console.error("Failed to load roadmap:", err);
+        if (!controller.signal.aborted) {
+          console.error("Failed to load roadmap:", err);
+        }
       }).finally(() => {
         setLoading(false);
       });
-    }
-  },[id, token]);
+
+      return () => { controller.abort(); };
+    }, [id, token])
+  );
 
   if (!topic) {
     return (
@@ -84,6 +96,13 @@ export default function TopicDetailScreen() {
 
   const completedModulesCount = roadmap.filter(m => m.status === "completed").length;
 
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (hrs > 0) return `${hrs}h ${mins}m`;
+    return `${mins}m`;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -110,7 +129,7 @@ export default function TopicDetailScreen() {
         <View style={styles.heroSection}>
           <View style={styles.heroInfo}>
             <Text style={styles.topicName}>{topic.title}</Text>
-            <Text style={styles.topicSubtitle}>Advanced Architect Course</Text>
+            {/* <Text style={styles.topicSubtitle}>Advanced Architect Course</Text> */}
           </View>
           <TouchableOpacity 
             style={[styles.heroIconBox, { width: 'auto', paddingHorizontal: 16, flexDirection: 'row', gap: 8 }]}
@@ -167,23 +186,13 @@ export default function TopicDetailScreen() {
         <View style={styles.statsGrid}>
           <View style={styles.statBox}>
             <Feather name="rotate-ccw" size={18} color="#94A3B8" style={{ marginBottom: 12 }} />
-            <Text style={styles.statValue}>{topic.sessionsCompleted || 0}</Text>
+            <Text style={styles.statValue}>{stats.sessionsCompleted}</Text>
             <Text style={styles.statLabel}>SESSIONS</Text>
           </View>
           <View style={styles.statBox}>
             <Feather name="clock" size={18} color="#94A3B8" style={{ marginBottom: 12 }} />
-            <Text style={styles.statValue}>1h 12m</Text>
+            <Text style={styles.statValue}>{formatTime(stats.totalTimeSeconds)}</Text>
             <Text style={styles.statLabel}>TIME SPENT</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Feather name="calendar" size={18} color="#94A3B8" style={{ marginBottom: 12 }} />
-            <Text style={styles.statValue}>Today</Text>
-            <Text style={styles.statLabel}>LAST ACTIVE</Text>
-          </View>
-          <View style={styles.statBox}>
-            <MaterialCommunityIcons name="fire" size={18} color="#f97316" style={{ marginBottom: 12 }} />
-            <Text style={styles.statValue}>{streakCount} Days</Text>
-            <Text style={styles.statLabel}>TOPIC STREAK</Text>
           </View>
         </View>
 

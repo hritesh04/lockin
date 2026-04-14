@@ -1,8 +1,8 @@
 import SessionComplete from '@/components/SessionComplete';
 import { completeSession, startSession, updateProgress } from '@/lib/api';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -79,35 +79,39 @@ export default function SessionScreen() {
     }).start();
   }, [currentIndex]);
 
-  useEffect(() => {
-    let cancelled = false;
+  useFocusEffect(
+    useCallback(() => {
+      const controller = new AbortController();
 
-    const targetId = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : '');
-    const targetLessonId = typeof lessonId === 'string' ? lessonId : (Array.isArray(lessonId) ? lessonId[0] : '');
-    const targetQuizMode = typeof quizMode === 'string' ? quizMode : undefined;
+      const targetId = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : '');
+      const targetLessonId = typeof lessonId === 'string' ? lessonId : (Array.isArray(lessonId) ? lessonId[0] : '');
+      const targetQuizMode = typeof quizMode === 'string' ? quizMode : undefined;
 
-    setLoading(true);
-    startSession({ 
-      topic_id: targetId, 
-      lesson_id: targetLessonId || undefined,
-      quiz_mode: targetLessonId ? 'lesson' : targetQuizMode
-    })
-      .then((res: any) => {
-        if (!cancelled) {
-          startSessionStore(res.session_id, res.questions);
-          setLoading(false);
-        }
-      })
-      .catch((err: any) => {
-        console.error("Failed to start session:", err);
-        if (!cancelled) setLoading(false);
-      });
+      setLoading(true);
+      startSession({ 
+        topic_id: targetId, 
+        lesson_id: targetLessonId || undefined,
+        quiz_mode: targetLessonId ? 'lesson' : targetQuizMode
+      }, controller.signal)
+        .then((res: any) => {
+          if (!controller.signal.aborted) {
+            startSessionStore(res.session_id, res.questions);
+            setLoading(false);
+          }
+        })
+        .catch((err: any) => {
+          if (!controller.signal.aborted) {
+            console.error("Failed to start session:", err);
+            setLoading(false);
+          }
+        });
 
-    return () => {
-      cancelled = true;
-      resetSession();
-    };
-  }, [id, lessonId]);
+      return () => {
+        controller.abort();
+        resetSession();
+      };
+    }, [id, lessonId])
+  );
 
   const handleSpeechInput = () => {
     if (isListening) {
