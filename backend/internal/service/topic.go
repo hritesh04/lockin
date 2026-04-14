@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ type AIGenerator interface {
 
 type TopicRepository interface {
 	UpdateTierAndRemark(ctx context.Context, topicID string, tier int, remark string) error
+	UpdateStatus(ctx context.Context, id, status string) error
 	Create(ctx context.Context, topic models.Topic) error
 	GetAll(ctx context.Context, userID uuid.UUID) ([]models.Topic, error)
 	GetByID(ctx context.Context, topicID, userID string) (models.Topic, error)
@@ -54,6 +56,7 @@ func (s *topicService) CreateTopic(ctx context.Context, userID string, title str
 		UserID: userID,
 		Title:  title,
 		Tier:   tier,
+		Status: "generating",
 	}
 
 	err := s.repo.Create(ctx, topic)
@@ -85,6 +88,7 @@ func (s *topicService) GetRoadmap(ctx context.Context, topicID, userID string) (
 	}
 	roadmap, err := s.repo.GetRoadmap(ctx, topicID, userID)
 	if err != nil {
+		log.Println("Error fetching roadmap:",err)
 		return nil, err
 	}
 	return roadmap, nil

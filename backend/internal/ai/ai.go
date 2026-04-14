@@ -99,8 +99,11 @@ func (g *Generator) GenerateRoadmap(ctx context.Context, topicID string, topic s
 
 	if err := g.storeRoadmap(ctx, topicID, roadmap); err != nil {
 		log.Println("Error storing roadmap:", err)
+		_, _ = g.DB.Exec(ctx, "UPDATE topics SET status = 'failed' WHERE id = $1", topicID)
 		return fmt.Errorf("failed to store roadmap: %w", err)
 	}
+
+	_, _ = g.DB.Exec(ctx, "UPDATE topics SET status = 'completed' WHERE id = $1", topicID)
 
 	log.Printf("Roadmap saved for topic %s: %d modules", topicID, len(roadmap.Modules))
 	return nil

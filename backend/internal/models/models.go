@@ -40,10 +40,12 @@ type ProgressUpdate struct {
 }
 
 type TopicRoadmap struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Tier    int      `json:"tier"`
-	Modules []Module `json:"modules"`
+	ID                string   `json:"id"`
+	Title             string   `json:"title"`
+	Tier              int      `json:"tier"`
+	SessionsCompleted int      `json:"sessionsCompleted"`
+	TotalTimeSeconds  float64      `json:"totalTimeSeconds"`
+	Modules           []Module `json:"modules"`
 }
 
 type Module struct {
@@ -110,6 +112,7 @@ type Topic struct {
 	UserID    string     `json:"userId" db:"user_id"`
 	Title     string     `json:"title" db:"title"`
 	Tier      int        `json:"tier" db:"tier"`
+	Status    string     `json:"status" db:"status"`
 	Remark    *string    `json:"remark,omitempty" db:"remark"`
 	CreatedAt time.Time  `json:"createdAt" db:"created_at"`
 	DeletedAt *time.Time `json:"deletedAt,omitempty" db:"deleted_at"`

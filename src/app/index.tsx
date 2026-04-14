@@ -1,6 +1,7 @@
 import FloatingNavBar from '@/components/FloatingNavBar';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';import { useCallback, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,10 +15,10 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createTopic, getActivity, getMe, listTopics, proficiencyToApi } from '../lib/api';
+import { createTopic, getActivity, getMe, isAbortError, listTopics, proficiencyToApi } from '../lib/api';
+import { useAuthStore } from '../store/auth';
 import { Topic, useTopicsStore } from '../store/topics';
 import { useUserStore } from '../store/user';
-import { useAuthStore } from '../store/auth';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -49,23 +50,22 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      let isActive = true;
+      const controller = new AbortController();
 
     const run = async () => {
       if (!token) return;
       try {
         const [userData, activityInfo, apiTopics] = await Promise.all([
-          getMe(),
-          getActivity(),
-          listTopics(),
+          getMe(controller.signal),
+          getActivity(controller.signal),
+          listTopics(controller.signal),
         ]);
 
-        if (isActive) {
+        if (!controller.signal.aborted) {
           hydrateUser(userData);
-          setActivityHistory(activityInfo.activity);
+          setActivityHistory(activityInfo.activity || []);
         }
         
-        // Map ApiTopic to Topic
         const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
           id: t.id,
           title: t.title,
@@ -74,31 +74,62 @@ export default function HomeScreen() {
           accuracyPercent: 0, 
           sessionsCompleted: 0,
           weakConcepts: [],
+          status: t.status || 'completed',
         }));
         
-        if (isActive) setTopics(mappedTopics);
+        if (!controller.signal.aborted) setTopics(mappedTopics);
       } catch (e) {
-        console.warn('API sync failed', e);
+        if (!isAbortError(e)) {
+          console.warn('API sync failed', e);
+        }
       }
     };
 
       void run();
 
       return () => {
-        isActive = false;
+        controller.abort();
       };
     }, [setTopics, token])
   );
 
+  // Polling for generating topics
+  useEffect(() => {
+    const hasGeneratingTopic = topics.some(t => t.status === 'generating');
+    if (!hasGeneratingTopic || !token) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const apiTopics = await listTopics();
+        const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          currentTier: t.currentTier ?? 1,
+          familiarityLevel: t.familiarityLevel ?? 'beginner',
+          accuracyPercent: 0,
+          sessionsCompleted: 0,
+          weakConcepts: [],
+          status: t.status || 'completed',
+        }));
+        setTopics(mappedTopics);
+      } catch (e) {
+        console.warn('Polling failed', e);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [topics, token, setTopics]);
+
   const handleCreate = async () => {
     if (!topicName.trim() || isGenerating) return;
     setIsGenerating(true);
+    const controller = new AbortController();
 
     try {
       const { topic: apiTopic } = await createTopic({
         title: topicName.trim(),
         familiarity_level: proficiencyToApi(selectedProficiency),
-      });
+      }, controller.signal);
       // Map and append directly
       const newTopic: Topic = {
           id: apiTopic.id,
@@ -108,13 +139,16 @@ export default function HomeScreen() {
           accuracyPercent: 0,
           sessionsCompleted: 0,
           weakConcepts: [],
+          status: 'generating',
       };
       addTopic(newTopic);
       setShowModal(false);
       setTopicName('');
       setSelectedProficiency('beginner');
     } catch (e) {
-      console.error(e);
+      if (!isAbortError(e)) {
+        console.error(e);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -134,11 +168,22 @@ export default function HomeScreen() {
           </View>
           <View>
             <Text style={styles.heroPopulatedTitle}>{topic.title}</Text>
-            <Text style={styles.heroPopulatedSubtitle}>{topic.sessionsCompleted} sessions</Text>
+            {topic.status === 'generating' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                <ActivityIndicator size="small" color="#2563EB" style={{ marginRight: 6 }} />
+                <Text style={[styles.heroPopulatedSubtitle, { color: '#2563EB' }]}>Generating Roadmap...</Text>
+              </View>
+            ) : (
+              <Text style={styles.heroPopulatedSubtitle}>{topic.sessionsCompleted} sessions</Text>
+            )}
           </View>
         </View>
         <View style={styles.heroPopulatedPlayBtn}>
-          <Ionicons name="play" size={24} color="#0F172A" />
+          {topic.status === 'generating' ? (
+            <Feather name="loader" size={24} color="#94A3B8" />
+          ) : (
+            <Ionicons name="play" size={24} color="#0F172A" />
+          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -176,7 +221,6 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Streak Banner */}
         <View style={styles.streakBanner}>
           <View style={styles.streakLeft}>
             <View style={styles.flameCircle}>
@@ -210,29 +254,31 @@ export default function HomeScreen() {
         {additionalTopics.map(t => (
           <TouchableOpacity
             key={t.id}
-            style={styles.courseCard}
-            activeOpacity={0.7}
-            onPress={() => router.push(`/topics/${t.id}`)}
+            style={[styles.courseCard, t.status === 'generating' && { opacity: 0.7 }]}
+            activeOpacity={t.status === 'generating' ? 1 : 0.7}
+            onPress={() => t.status === 'generating' ? null : router.push(`/topics/${t.id}`)}
           >
             <View style={styles.courseCardIconBox}>
               <Feather name="database" size={24} color="#6366F1" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.courseCardTitle}>{t.title}</Text>
-              <Text style={styles.courseCardSub}>{t.sessionsCompleted} sessions completed</Text>
+              {t.status === 'generating' ? (
+                <Text style={[styles.courseCardSub, { color: '#6366F1' }]}>Generating roadmap...</Text>
+              ) : (
+                <Text style={styles.courseCardSub}>{t.sessionsCompleted} sessions completed</Text>
+              )}
             </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {/* Floating Bottom Nav */}
       <FloatingNavBar onAddPress={() => setShowModal(true)} activeScreen='home'/>
 
-      {/* Modal */}
       <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <View style={styles.modalBackdrop}>
-            <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowModal(false)} activeOpacity={1} />
+            <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowModal(false)} activeOpacity={1} />
             
             <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
               <View style={styles.modalHeader}>

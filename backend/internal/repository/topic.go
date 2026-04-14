@@ -17,6 +17,11 @@ func NewTopicRepository(db *pgxpool.Pool) *topicRepository {
 	return &topicRepository{db: db}
 }
 
+func (r *topicRepository) UpdateStatus(ctx context.Context, id, status string) error {
+	_, err := r.db.Exec(ctx, "UPDATE topics SET status = $1 WHERE id = $2", status, id)
+	return err
+}
+
 func (r *topicRepository) UpdateTierAndRemark(ctx context.Context, topicID string, tier int, remark string) error {
 	_, err := r.db.Exec(ctx,
 		"UPDATE topics SET tier = $1, remark = $2 WHERE id = $3",
@@ -27,15 +32,15 @@ func (r *topicRepository) UpdateTierAndRemark(ctx context.Context, topicID strin
 
 func (r *topicRepository) Create(ctx context.Context, topic models.Topic) error {
 	_, err := r.db.Exec(ctx,
-		"INSERT INTO topics (id, user_id, title, tier) VALUES ($1, $2, $3, $4)",
-		topic.ID, topic.UserID, topic.Title, topic.Tier,
+		"INSERT INTO topics (id, user_id, title, tier, status) VALUES ($1, $2, $3, $4, $5)",
+		topic.ID, topic.UserID, topic.Title, topic.Tier, topic.Status,
 	)
 	return err
 }
 
 func (r *topicRepository) GetAll(ctx context.Context, userID uuid.UUID) ([]models.Topic, error) {
 	rows, err := r.db.Query(ctx,
-		"SELECT id, user_id, title, tier, remark, created_at FROM topics WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
+		"SELECT id, user_id, title, tier, status, remark, created_at FROM topics WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
 		userID,
 	)
 	if err != nil {
@@ -46,7 +51,7 @@ func (r *topicRepository) GetAll(ctx context.Context, userID uuid.UUID) ([]model
 	var topics []models.Topic
 	for rows.Next() {
 		var t models.Topic
-		rows.Scan(&t.ID, &t.UserID, &t.Title, &t.Tier, &t.Remark, &t.CreatedAt)
+		rows.Scan(&t.ID, &t.UserID, &t.Title, &t.Tier, &t.Status, &t.Remark, &t.CreatedAt)
 		topics = append(topics, t)
 	}
 	return topics, nil
@@ -55,9 +60,9 @@ func (r *topicRepository) GetAll(ctx context.Context, userID uuid.UUID) ([]model
 func (r *topicRepository) GetByID(ctx context.Context, topicID, userID string) (models.Topic, error) {
 	var t models.Topic
 	err := r.db.QueryRow(ctx,
-		"SELECT id, user_id, title, tier, remark, created_at FROM topics WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+		"SELECT id, user_id, title, tier, status, remark, created_at FROM topics WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
 		topicID, userID,
-	).Scan(&t.ID, &t.UserID, &t.Title, &t.Tier, &t.Remark, &t.CreatedAt)
+	).Scan(&t.ID, &t.UserID, &t.Title, &t.Tier, &t.Status, &t.Remark, &t.CreatedAt)
 	return t, err
 }
 
@@ -77,7 +82,28 @@ func (r *topicRepository) GetRoadmap(ctx context.Context, topicID, userID string
   t.id,
   t.title,
   t.tier,
-
+  (SELECT COUNT(*) 
+   FROM sessions s 
+   WHERE (s.topic_id = t.id 
+      OR s.lesson_id IN (
+        SELECT l.id 
+        FROM lessons l 
+        JOIN modules m ON l.node_id = m.id 
+        WHERE m.topic_id = t.id
+      ))
+      AND s.completed_at IS NOT NULL
+  ) as sessions_count,
+  (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (s.completed_at - s.created_at))), 0)
+   FROM sessions s 
+   WHERE (s.topic_id = t.id 
+      OR s.lesson_id IN (
+        SELECT l.id 
+        FROM lessons l 
+        JOIN modules m ON l.node_id = m.id 
+        WHERE m.topic_id = t.id
+      ))
+      AND s.completed_at IS NOT NULL
+  ) as total_time_seconds,
   COALESCE(
     json_agg(
       jsonb_build_object(
@@ -157,7 +183,7 @@ WHERE t.id = $1 AND t.user_id = $2
 
 GROUP BY t.id;`,
 		topicID, userID,
-	).Scan(&t.ID, &t.Title, &t.Tier, &modulesJSON)
+	).Scan(&t.ID, &t.Title, &t.Tier,&t.SessionsCompleted,&t.TotalTimeSeconds, &modulesJSON)
 
 	if err != nil {
 		return nil, err
