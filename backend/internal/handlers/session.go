@@ -1,9 +1,7 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
-	"log"
 
 	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/gofiber/fiber/v2"
@@ -43,17 +41,6 @@ func (h *APIHandler) StartSession(c *fiber.Ctx) error {
 	userIDStr := c.Locals("user_id").(string)
 	userID, _ := uuid.Parse(userIDStr)
 
-	// Create a context that cancels when the request is done or client disconnects
-	ctx, cancel := context.WithCancel(c.UserContext())
-	defer cancel()
-
-	// Bridge Fiber's request context to standard context.Context
-	go func() {
-		<-c.Context().Done()
-		log.Println("Request cancelled")
-		cancel()
-	}()
-
 	var req StartSessionReq
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
@@ -78,7 +65,7 @@ func (h *APIHandler) StartSession(c *fiber.Ctx) error {
 		quizMode = "options"
 	}
 
-	sessionID, questions, err := h.Session.StartSession(ctx, topicID, lessonID, userID, quizMode)
+	sessionID, questions, err := h.Session.StartSession(c.Context(), topicID, lessonID, userID, quizMode)
 	if err != nil {
 		if err.Error() == "Not enough questions. Generation might be pending." {
 			return c.Status(400).JSON(fiber.Map{"success": false, "error": err.Error()})
@@ -110,17 +97,8 @@ func (h *APIHandler) CompleteSession(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
 	userIDStr := c.Locals("user_id").(string)
 
-	// Create a context that cancels when the request is done or client disconnects
-	ctx, cancel := context.WithCancel(c.UserContext())
-	defer cancel()
-
-	go func() {
-		<-c.Context().Done()
-		cancel()
-	}()
-
 	var req CompleteSessionReq
-	_ = c.BodyParser(&req) // Optional for lesson-based sessions
+	_ = c.BodyParser(&req)
 
 	answersJSON := ""
 	if len(req.Answers) > 0 {
@@ -128,7 +106,7 @@ func (h *APIHandler) CompleteSession(c *fiber.Ctx) error {
 		answersJSON = string(b)
 	}
 
-	err := h.Session.CompleteSession(ctx, sessionID, answersJSON, req.TopicID, userIDStr)
+	err := h.Session.CompleteSession(c.Context(), sessionID, answersJSON, req.TopicID, userIDStr)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed completing session: " + err.Error()})
 	}
@@ -154,21 +132,12 @@ func (h *APIHandler) GetUserActivity(c *fiber.Ctx) error {
 	userIDStr := c.Locals("user_id").(string)
 	userID, _ := uuid.Parse(userIDStr)
 
-	// Create a context that cancels when the request is done or client disconnects
-	ctx, cancel := context.WithCancel(c.UserContext())
-	defer cancel()
-
-	go func() {
-		<-c.Context().Done()
-		cancel()
-	}()
-
-	activity, err := h.Session.GetUserActivity(ctx, userID)
+	activity, err := h.Session.GetUserActivity(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed getting user activity: " + err.Error()})
 	}
 
-	user, err := h.Auth.GetMe(ctx, userIDStr)
+	user, err := h.Auth.GetMe(c.Context(), userIDStr)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed getting user data: " + err.Error()})
 	}
