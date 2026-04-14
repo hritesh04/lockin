@@ -112,7 +112,7 @@ func (r *sessionRepository) GetUserActivity(ctx context.Context, userID uuid.UUI
 		 FROM sessions s
 		 LEFT JOIN lessons l ON s.lesson_id = l.id
 		 LEFT JOIN topics t ON s.topic_id = t.id
-		 WHERE s.user_id = $1 AND s.created_at >= CURRENT_DATE - INTERVAL '30 days'
+		 WHERE s.user_id = $1 AND s.created_at >= CURRENT_DATE - INTERVAL '30 days' AND s.completed_at IS NOT NULL
 		 ORDER BY s.created_at DESC`,
 		userID,
 	)

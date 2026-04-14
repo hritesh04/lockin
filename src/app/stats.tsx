@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { Dimensions, DimensionValue, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FloatingNavBar from '../components/FloatingNavBar';
-import { getActivity, getMe } from '../lib/api';
+import { getActivity, getMe, isAbortError } from '../lib/api';
 import { useAuthStore } from '../store/auth';
 import { useUserStore } from '../store/user';
 
@@ -12,7 +12,7 @@ import { useUserStore } from '../store/user';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_PADDING = 24;
 const GRID_GAP = 8;
-const GRID_CONTAINER_WIDTH = SCREEN_WIDTH - (GRID_PADDING * 2) - 48; // Total width minus card padding & container padding
+const GRID_CONTAINER_WIDTH = SCREEN_WIDTH - (GRID_PADDING * 2) - 48; 
 const SQUARE_SIZE = (GRID_CONTAINER_WIDTH - (9 * GRID_GAP)) / 10;
 
 export default function StatsScreen() {
@@ -27,24 +27,26 @@ export default function StatsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      let isActive = true;
+      const controller = new AbortController();
       const load = async () => {
         if (!token) return;
         try {
           const [userData, activityInfo] = await Promise.all([
-            getMe(),
-            getActivity(),
+            getMe(controller.signal),
+            getActivity(controller.signal),
           ]);
-          if (isActive) {
+          if (!controller.signal.aborted) {
             hydrateUser(userData);
-            setActivityHistory(activityInfo.activity);
+            setActivityHistory(activityInfo.activity || []);
           }
         } catch (e) {
-          console.error('Stats API sync failed', e);
+          if (!isAbortError(e)) {
+            console.error('Stats API sync failed', e);
+          }
         }
       };
       load();
-      return () => { isActive = false; };
+      return () => { controller.abort(); };
     }, [token])
   );
 
@@ -75,15 +77,24 @@ export default function StatsScreen() {
     else if (sessionCount >= 1 || timeSec > 0) intensity = 0.3;
 
     const dayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    
     return { 
       id: i, 
       intensity, 
       day: dayStr,
+      dateLabel,
       sessionCount,
       lessonCount: dayData?.lessons?.length || 0,
       quizCount: dayData?.quizes?.length || 0
     };
   });
+
+  // Group into columns for top-to-bottom (3 rows per column)
+  const heatmapColumns = [];
+  for (let i = 0; i < heatmapData.length; i += 3) {
+    heatmapColumns.push(heatmapData.slice(i, i + 3));
+  }
 
   // Calculate totals
   const totalTopics = new Set(activityHistory.flatMap(a => a.quizes.map(q => q.topic_name))).size;
@@ -158,29 +169,34 @@ export default function StatsScreen() {
         </View>
         <View style={styles.heatmapCard}>
           <View style={styles.heatmapGrid}>
-            {heatmapData.map((item) => (
-              <View key={item.id} style={{ alignItems: 'center', zIndex: activeSquare === item.id ? 100 : 1 }}>
-                {activeSquare === item.id && (
-                  <View style={styles.heatmapTooltip}>
-                    <Text style={styles.tooltipText}>{item.sessionCount} Sessions</Text>
-                    <Text style={styles.tooltipSubText}>{item.lessonCount} Lessons, {item.quizCount} Quizzes</Text>
-                    <View style={styles.tooltipArrow} />
+            {heatmapColumns.map((col, colIndex) => (
+              <View key={colIndex} style={styles.heatmapColumn}>
+                {col.map((item) => (
+                  <View key={item.id} style={{ alignItems: 'center', zIndex: activeSquare === item.id ? 100 : 1 }}>
+                    {activeSquare === item.id && (
+                      <View style={styles.heatmapTooltip}>
+                        <Text style={styles.tooltipDate}>{item.dateLabel}</Text>
+                        <Text style={styles.tooltipText}>{item.sessionCount} Sessions</Text>
+                        <Text style={styles.tooltipSubText}>{item.lessonCount} Lessons, {item.quizCount} Quizzes</Text>
+                        <View style={styles.tooltipArrow} />
+                      </View>
+                    )}
+                    <Pressable
+                      onPressIn={() => setActiveSquare(item.id)}
+                      onPressOut={() => setActiveSquare(null)}
+                      style={[
+                        styles.heatmapSquare, 
+                        { 
+                          backgroundColor: item.intensity === 0 
+                            ? '#1E293B' // slate-800 
+                            : `rgba(249, 115, 22, ${0.4 + item.intensity * 0.6})` 
+                        },
+                        item.intensity > 0.8 && styles.heatmapSquareHighlight,
+                        activeSquare === item.id && { transform: [{ scale: 1.1 }], zIndex: 10 }
+                      ]} 
+                    />
                   </View>
-                )}
-                <Pressable
-                  onPressIn={() => setActiveSquare(item.id)}
-                  onPressOut={() => setActiveSquare(null)}
-                  style={[
-                    styles.heatmapSquare, 
-                    { 
-                      backgroundColor: item.intensity === 0 
-                        ? '#1E293B' // slate-800 
-                        : `rgba(249, 115, 22, ${0.4 + item.intensity * 0.6})` 
-                    },
-                    item.intensity > 0.8 && styles.heatmapSquareHighlight,
-                    activeSquare === item.id && { transform: [{ scale: 1.1 }], zIndex: 10 }
-                  ]} 
-                />
+                ))}
               </View>
             ))}
           </View>
@@ -390,9 +406,12 @@ const styles = StyleSheet.create({
   heatmapGrid: {
     width: '100%',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     justifyContent: 'flex-start',
+  },
+  heatmapColumn: {
+    flexDirection: 'column',
+    gap: 8,
   },
   heatmapSquare: {
     width: SQUARE_SIZE,
@@ -544,12 +563,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100,
-    minWidth: 120,
+    minWidth: 140,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 10,
+  },
+  tooltipDate: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    marginBottom: 2,
   },
   tooltipSubText: {
     color: '#94A3B8',

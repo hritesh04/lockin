@@ -185,7 +185,7 @@ func (s *sessionService) GetUserActivity(ctx context.Context, userID uuid.UUID) 
 		return days[i] > days[j]
 	})
 
-	var result []handlers.UserActivityData
+	result := []handlers.UserActivityData{}
 	for _, day := range days {
 		result = append(result, *dailyMap[day])
 	}
