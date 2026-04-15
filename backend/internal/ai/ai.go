@@ -16,6 +16,7 @@ type LLMProvider interface {
 	GenerateRoadmap(ctx context.Context, prompt string) (string, error)
 	GenerateTopicQuestions(ctx context.Context, prompt string) (string, error)
 	EvaluateTopicSession(ctx context.Context, prompt string) (string, error)
+	GenerateAssessmentQuestions(ctx context.Context, prompt string) (string, error)
 }
 
 type Generator struct {
@@ -223,7 +224,7 @@ func (g *Generator) GenerateTopicQuestions(ctx context.Context, topic string, ti
 }
 
 func (g *Generator) EvaluateTopicSession(ctx context.Context, topic string, tier int, remark string, sessionData string) (int, string, error) {
-	prompt := g.buildTopicEvaluationPrompt(topic, tier, remark, sessionData)
+	prompt := g.buildTopicSessionEvaluationPrompt(topic, tier, remark, sessionData)
 	res, err := g.Provider.EvaluateTopicSession(ctx, prompt)
 	if err != nil {
 		return 0, "", err
@@ -235,4 +236,38 @@ func (g *Generator) EvaluateTopicSession(ctx context.Context, topic string, tier
 	}
 
 	return aiRes.NewTier, aiRes.NewRemark, nil
+}
+
+func (g *Generator) GenerateTopicAssessment(ctx context.Context,topic string,proficiency string) (TopicSessionAIResponse, error) {
+	start := time.Now()
+	log.Println("Generating Assessment Questions for topic: ", topic, " Starting at ", start)
+	prompt := g.buildAssessmentPrompt(topic,proficiency)
+	res, err := g.Provider.GenerateAssessmentQuestions(ctx,prompt)
+	if err != nil {
+		log.Println("Error generating assessment questions:", err)
+		return TopicSessionAIResponse{}, err
+	}
+	log.Println("Assessment Questions generated successfully: ", time.Since(start))
+	var questions TopicSessionAIResponse
+	if err := json.Unmarshal([]byte(res), &questions); err != nil {
+		log.Println("Error parsing assessment questions JSON:", err)
+		return TopicSessionAIResponse{}, err
+	}
+	return questions, nil
+}
+
+func (g *Generator) EvaluateTopicAssessment(ctx context.Context,topic string,resposne string) (TopicEvaluationAIResponse, error) {
+	start := time.Now()
+	log.Println("Evaluating Answers of Assessment Questions for topic: ", topic, " Starting at ", start)
+	prompt := g.buildAssessmentEvaluationPrompt(topic,resposne)
+	res, err := g.Provider.EvaluateTopicSession(ctx,prompt)
+	log.Println("Evaluation completed in: ", time.Since(start))
+	if err != nil {
+		return TopicEvaluationAIResponse{}, err
+	}
+	var aiRes TopicEvaluationAIResponse
+	if err := json.Unmarshal([]byte(res), &aiRes); err != nil {
+		return TopicEvaluationAIResponse{}, fmt.Errorf("failed to parse evaluation JSON: %w", err)
+	}
+	return aiRes,nil
 }

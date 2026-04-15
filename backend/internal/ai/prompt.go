@@ -1,11 +1,14 @@
 package ai
 
-import "fmt"
+import (
+	"fmt"
+)
 
 func (g *Generator) buildAssessmentPrompt(topic string, proficiency string) string {
-	return fmt.Sprintf(`You are a knowledge assessment engine for a learning app. Your task is to generate a diagnostic quiz to assess a user's actual knowledge on a topic. The user has self-reported their proficiency level. Use this to calibrate question difficulty and focus areas — but do not trust the claim blindly. The quiz exists to validate it.
+	return fmt.Sprintf(`You are a knowledge assessment engine for a learning app. Your task is to generate a diagnostic quiz to assess a user's actual knowledge on a topic. The user has self-reported their proficiency level. Use this to calibrate question difficulty.
 TOPIC: %s
-USER CLAIMED PROFICIENCY: %s
+USER CLAIMED PROFICIENCY : %s
+
 PROFICIENCY DEFINITIONS (use these as your calibration reference):
 - beginner     : no knowledge of the topic; unaware of key terms and concepts
 - intermediate : has heard of key terms/concepts; solid understanding of most,
@@ -13,6 +16,7 @@ PROFICIENCY DEFINITIONS (use these as your calibration reference):
 - advanced     : knows all key terms/concepts - what they do, how they work;
                  can reason about complex questions that overlap with other
                  concepts or domains, their interactions and edge cases
+
 CALIBRATION RULES BY CLAIMED LEVEL:
 - If claimed "intermediate":
     - '~40%' of questions should test foundational concepts (to catch gaps they may have skipped)
@@ -24,28 +28,33 @@ CALIBRATION RULES BY CLAIMED LEVEL:
     - '~40%' advanced — complex reasoning, edge cases, cross-domain interactions
 GENERATION RULES:
 - Generate between 5 and 10 questions. Use fewer for narrow topics, more for broad ones.
-- Do NOT provide answers, answer keys, or hints.
 - Mix question formats: MCQ for conceptual/factual, short answer for applied or reasoning questions.
 - Each question must target a distinct concept or sub-area. Do not repeat similar questions.
 - For MCQ: exactly 4 options labeled A, B, C, D. One correct answer. Distractors must be plausible.
 - For short answer: answerable in 1-3 sentences by someone at the claimed level.`,topic,proficiency)
 }
 
-func (g *Generator) buildAssessmentEvaluationPrompt(topic string) string {
-	return fmt.Sprintf(`You are a learning assessment engine for a learning app. Your task is to evaluate a user's quiz answers and produce a structured assessment of their actual knowledge level. You must cross-reference their performance against their claimed proficiency level to determine whether the claim is accurate, inflated, or understated.
+func (g *Generator) buildAssessmentEvaluationPrompt(topic string, response string) string {
+   // var q&a []
+	return fmt.Sprintf(`You are a learning assessment engine for a learning app. Your task is to evaluate a user's quiz answers and produce a tier level of their actual knowledge level absed on the tier definition.
 TOPIC: %s
 
-USER CLAIMED PROFICIENCY: %s
+USER ASSESSMENT RESPONSES (Questions & Answer):
+%s
 
-PROFICIENCY DEFINITIONS (use these as the authoritative scale for your assessment):
-- beginner     : no knowledge of the topic; unaware of key terms and concepts
-- intermediate : has heard of key terms/concepts; solid understanding of most,
-                 vague understanding of the rest
-- advanced     : knows all key terms/concepts — what they do, how they work;
-                 can reason about complex questions that overlap with other
-                 concepts or domains, their interactions and edge cases
+TIER DEFINITIONS:
+1 - No prior knowledge; unaware of the topic's key terms and concepts entirely.
+2 - Aware of a few key terms by name, understanding is surface-level or based on intuition rather than actual knowledge.
+3 - Familiar with most key terms by name, can give basic definitions for a few but understanding is mostly superficial with little grasp of how or why.
+4 - Basic understanding of most key concepts, can describe what they are but struggles to explain how they work or why they matter.
+5 -Solid understanding of most key concepts, can explain what they are and how they work, but has gaps in application, edge cases, and deeper mechanics.
+6 - Good grasp of most key concepts and solid understanding of the rest, can explain concepts clearly and apply them correctly in straightforward scenarios.
+7 - Strong understanding of almost all key concepts, comfortable with practical application and beginning to reason about how concepts interact with each other.
+8 - Deep understanding of almost all key concepts, can reason confidently about cross-concept interactions, identify non-obvious connections, and handle moderately complex problems that span multiple areas.
+9 - Complete understanding of most concepts with strong cross-domain knowledge, can tackle complex, multi-layered problems, reason through edge cases, and explain the trade-offs and implications of different approaches.
+10 - Complete understanding of almost all concepts with strong applied and theoretical cross-domain knowledge, capable of critical thinking, novel problem-solving, and arriving at well-reasoned solutions in unfamiliar or ambiguous scenarios.
 
-QUIZ AND ANSWERS:
+QUESTION AND ANSWERS:
 {{quiz_with_answers}}
 
 EVALUATION RULES:
@@ -55,7 +64,7 @@ EVALUATION RULES:
 - Identify what concept or sub-area each question was testing.
 - Determine the user's ACTUAL proficiency level using the definitions above.
 - Cross-reference actual level vs claimed level
-- recommended_focus must be a single actionable sentence the roadmap generator can use directly.`)
+- recommended_focus must be a single actionable sentence the roadmap generator can use directly.`,topic,response)
 }
 
 func (g *Generator) buidlRoadmapPrompt(topic string, assessment string) string {
@@ -162,7 +171,7 @@ GENERATION RULES:
 `, topic, tier, remark, modeInstruction)
 }
 
-func (g *Generator) buildTopicEvaluationPrompt(topic string, tier int, remark string, results string) string {
+func (g *Generator) buildTopicSessionEvaluationPrompt(topic string, tier int, remark string, results string) string {
 	return fmt.Sprintf(`You are an expert evaluator for a learning app. Your task is to evaluate a user's performance in a study session and update their progress.
 
 TOPIC: %s

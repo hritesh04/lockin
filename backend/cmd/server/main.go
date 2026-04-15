@@ -107,7 +107,7 @@ func main() {
 	lessonService := service.NewLessonService(lessonRepo, moduleRepo)
 	sessionService := service.NewSessionService(sessionRepo, topicRepo, userRepo, aiGen)
 
-	apiHandler := handlers.NewAPIHandler(authService, topicService, moduleService, lessonService, sessionService)
+	apiHandler := handlers.NewAPIHandler(aiGen, authService, topicService, moduleService, lessonService, sessionService)
 
 	// API Routes
 	api := app.Group("/api/v1")
@@ -125,6 +125,8 @@ func main() {
 	topicsGroup.Post("/", apiHandler.CreateTopic)
 	topicsGroup.Get("/:id", apiHandler.GetTopic)
 	topicsGroup.Get("/roadmap/:id", apiHandler.GetRoadmap)
+	topicsGroup.Post("/assessment", apiHandler.CreateTopicAssessment)
+	topicsGroup.Post("/assessment/evaluate", apiHandler.EvaluateTopicAssessment)
 
 	moduleGroup := api.Group("/modules", middleware.Protected())
 	moduleGroup.Post("/status/:id", apiHandler.UpdateModuleStatus)

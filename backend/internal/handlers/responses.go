@@ -24,6 +24,12 @@ type AuthTokenResponse struct {
 	Data    AuthTokenData `json:"data"`
 }
 
+
+type UserAnswer struct {
+	Question models.Question `json:"question"`
+	Answer   string   `json:"answer"`
+}
+
 type RefreshTokenData struct {
 	Token        string `json:"token" example:"eyJhbGciOiJIUzI1NiIs..."`
 	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIs..."`
@@ -111,4 +117,11 @@ type UserActivityInfo struct {
 type GetUserActivityResponse struct {
 	Success bool             `json:"success" example:"true"`
 	Data    UserActivityInfo `json:"data"`
+}
+
+type AssessmentResponse struct {
+	Success bool             `json:"success" example:"true"`
+	Data    struct{
+		Questions []models.Question `json:"data"`
+	} `json:"questions"`
 }

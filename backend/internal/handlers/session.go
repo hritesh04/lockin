@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 
-	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
@@ -15,14 +14,14 @@ type StartSessionReq struct {
 	QuizMode string `json:"quiz_mode" example:"options"` // options, text, lesson
 }
 
-type UserAnswer struct {
-	Question models.Question `json:"question"`
-	Answer   string          `json:"answer"`
-}
-
 type CompleteSessionReq struct {
 	TopicID string       `json:"topic_id"`
 	Answers []UserAnswer `json:"answers"`
+}
+
+type TopicAssessmentEvaluationReq struct {
+	Topic	string	`json:"topic"`
+	Assessment []UserAnswer	`json:"assessment"`
 }
 
 // StartSession godoc

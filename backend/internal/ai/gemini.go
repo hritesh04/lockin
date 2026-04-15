@@ -245,3 +245,61 @@ func (g *GeminiClient) EvaluateTopicSession(ctx context.Context, prompt string) 
 	fmt.Printf("%+v",res.Text())
 	return res.Text(),nil
 }
+
+func (g *GeminiClient) GenerateAssessmentQuestions(ctx context.Context, prompt string) (string, error) {
+	schema := &genai.Schema{
+		Type:     genai.TypeObject,
+		Required: []string{"questions"},
+		Properties: map[string]*genai.Schema{
+			"questions": {
+				Type: genai.TypeArray,
+				Items: &genai.Schema{
+					Type:     genai.TypeObject,
+					Required: []string{"index", "type", "question"},
+					Properties: map[string]*genai.Schema{
+						"index": {
+							Type:        genai.TypeInteger,
+							Description: "Order of the question in the quiz",
+						},
+						"type": {
+							Type: genai.TypeString,
+							Enum: []string{"mcq", "true_false", "fill_blank", "short_answer"},
+							Description: "Type of question",
+						},
+						"question": {
+							Type:        genai.TypeString,
+							Description: "The question text",
+						},
+						"options": {
+							Type: genai.TypeArray,
+							Items: &genai.Schema{
+								Type:     genai.TypeObject,
+								Required: []string{"label", "index"},
+								Properties: map[string]*genai.Schema{
+									"label": {
+										Type: genai.TypeString,
+										Description: "The label of the option",
+									},
+									"index": {
+										Type: genai.TypeInteger,
+										Description: "Order of the option in the options",
+									},
+								},
+							},
+							Description: "Answer options (required for mcq and true_false, ignored otherwise)",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	res, err :=  g.client.Models.GenerateContent(ctx, g.model, genai.Text(prompt), &genai.GenerateContentConfig{
+		ResponseMIMEType: "application/json",
+		ResponseSchema:   schema,
+	})
+	if err != nil {
+		return "",err
+	}
+	return res.Text(),nil
+}

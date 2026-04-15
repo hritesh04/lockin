@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 
+	"github.com/acerowl/lockin/backend/internal/ai"
 	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/google/uuid"
 )
@@ -30,6 +31,7 @@ type TopicService interface {
 	ListTopics(ctx context.Context, userID uuid.UUID) ([]models.Topic, error)
 	GetTopic(ctx context.Context, topicID, userID string) (models.Topic, error)
 	GetRoadmap(ctx context.Context, topicID, userID string) (*models.TopicRoadmap, error)
+	EvaluateAssessmentAndCreateTopic(ctx context.Context, userID string, topic string, answers string) (models.Topic, error)
 }
 
 type SessionService interface {
@@ -38,7 +40,12 @@ type SessionService interface {
 	GetUserActivity(ctx context.Context, userID uuid.UUID) ([]UserActivityData, error)
 }
 
+type AIService interface {
+	GenerateTopicAssessment(ctx context.Context, topic string, proficiency string) (ai.TopicSessionAIResponse, error)
+}
+
 type APIHandler struct {
+	AI AIService
 	Auth    AuthService
 	Topic   TopicService
 	Session SessionService
@@ -46,6 +53,6 @@ type APIHandler struct {
 	Lesson  LessonService
 }
 
-func NewAPIHandler(auth AuthService, topic TopicService, module ModuleService, lesson LessonService, session SessionService) *APIHandler {
-	return &APIHandler{Auth: auth, Topic: topic, Session: session, Module: module, Lesson: lesson}
+func NewAPIHandler(aiGen AIService, auth AuthService, topic TopicService, module ModuleService, lesson LessonService, session SessionService) *APIHandler {
+	return &APIHandler{AI:aiGen, Auth: auth, Topic: topic, Session: session, Module: module, Lesson: lesson}
 }

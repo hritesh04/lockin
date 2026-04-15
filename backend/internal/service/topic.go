@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/acerowl/lockin/backend/internal/ai"
 	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/google/uuid"
 )
@@ -12,6 +13,7 @@ import (
 // AIGenerator defines the behavior required for AI operations
 type AIGenerator interface {
 	GenerateRoadmap(ctx context.Context, id string, title string, proficiency string) error
+	EvaluateTopicAssessment(ctx context.Context, topic string, answers string) (ai.TopicEvaluationAIResponse, error)
 }
 
 type TopicRepository interface {
@@ -63,10 +65,7 @@ func (s *topicService) CreateTopic(ctx context.Context, userID string, title str
 	if err != nil {
 		return models.Topic{}, err
 	}
-
-	// Always generate roadmap first; AI response will update the tier
-	go s.aiGen.GenerateRoadmap(context.Background(), topic.ID, title, familiarityLevel)
-
+	go s.aiGen.GenerateRoadmap(ctx, topic.ID, title, familiarityLevel)
 	return topic, nil
 }
 
@@ -92,4 +91,26 @@ func (s *topicService) GetRoadmap(ctx context.Context, topicID, userID string) (
 		return nil, err
 	}
 	return roadmap, nil
+}
+
+func (s *topicService) EvaluateAssessmentAndCreateTopic(ctx context.Context,userID string, topic string,resposne string) (models.Topic, error) {
+	evaluation, err := s.aiGen.EvaluateTopicAssessment(ctx,topic,resposne)
+	if err != nil {
+		return models.Topic{}, err
+	}
+
+	newTopic := models.Topic{
+		ID:     uuid.NewString(),
+		UserID: userID,
+		Title:  topic,
+		Tier:   evaluation.NewTier,
+		Remark: &evaluation.NewRemark,
+		Status: "generating",
+	}
+
+	if err := s.repo.Create(ctx, newTopic);err != nil {
+		return models.Topic{}, err
+	}
+	go s.aiGen.GenerateRoadmap(ctx, newTopic.ID, topic, fmt.Sprintf("%s - TIER: %d",evaluation.NewRemark,evaluation.NewTier))
+	return newTopic, nil
 }
