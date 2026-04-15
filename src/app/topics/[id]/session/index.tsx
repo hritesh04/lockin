@@ -1,5 +1,5 @@
 import SessionComplete from '@/components/SessionComplete';
-import { completeSession, startSession, updateProgress } from '@/lib/api';
+import { completeSession, evaluateTopicAssessment, startSession, updateProgress } from '@/lib/api';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,7 +22,7 @@ import { Option, useSessionStore } from '../../../../store/session';
 import { useTopicsStore } from '../../../../store/topics';
 
 export default function SessionScreen() {
-  const { id, lessonId, quizz, quizMode } = useLocalSearchParams();
+  const { id, lessonId, quizz, quizMode, topicName, isDiagnostic } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { 
@@ -88,6 +88,13 @@ export default function SessionScreen() {
       const targetQuizMode = typeof quizMode === 'string' ? quizMode : undefined;
 
       setLoading(true);
+      if (id === 'diagnostic') {
+        setLoading(false);
+        return () => {
+          resetSession();
+        };
+      }
+
       startSession({ 
         topic_id: targetId, 
         lesson_id: targetLessonId || undefined,
@@ -163,6 +170,30 @@ export default function SessionScreen() {
     }
   };
 
+  const handleDiagnosticFinish = async () => {
+    setSubmitting(true);
+    const userAnswers = useSessionStore.getState().userAnswers;
+    try {
+      await evaluateTopicAssessment({
+        topic: topicName as string,
+        assessment: userAnswers
+      });
+      resetSession();
+      router.replace('/');
+    } catch (e) {
+      console.error("Failed to evaluate diagnostic assessment:", e);
+      router.replace('/');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isCompleted && id === 'diagnostic') {
+      handleDiagnosticFinish();
+    }
+  }, [isCompleted, id]);
+
   const handleFinishActions = async () => {
     const sid = useSessionStore.getState().activeSessionId;
     const userAnswers = useSessionStore.getState().userAnswers;
@@ -213,6 +244,15 @@ export default function SessionScreen() {
   if (loading) return <View style={[styles.container, styles.centered]}><ActivityIndicator size="large" color="#F97316" /></View>;
 
   if (isCompleted) {
+    if (id === 'diagnostic') {
+      return (
+        <View style={[styles.container, styles.centered]}>
+          <ActivityIndicator size="large" color="#F97316" />
+          <Text style={{ color: '#FFF', marginTop: 16 }}>Evaluating your level...</Text>
+        </View>
+      );
+    }
+
     return (
       <SessionComplete
         topicTitle={topic?.title || 'Session'}
@@ -246,7 +286,7 @@ export default function SessionScreen() {
         </TouchableOpacity>
 
         <View style={styles.pillBox}>
-          <Text style={styles.pillText}>{topic?.title || 'Session'}</Text>
+          <Text style={styles.pillText}>{id === 'diagnostic' ? (topicName || 'Assessment') : (topic?.title || 'Session')}</Text>
         </View>
 
         <View style={styles.headerRight}>

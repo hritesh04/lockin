@@ -165,6 +165,19 @@ definitions:
       longestStreak:
         type: integer
     type: object
+  internal_handlers.AssessmentResponse:
+    properties:
+      questions:
+        properties:
+          data:
+            items:
+              $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Question'
+            type: array
+        type: object
+      success:
+        example: true
+        type: boolean
+    type: object
   internal_handlers.AuthTokenData:
     properties:
       refresh_token:
@@ -763,6 +776,25 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a topic
+      tags:
+      - topics
+  /topics/assessment:
+    post:
+      description: Generate question for assessment of user's knowledge on the topic
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Assessment questions
+          schema:
+            $ref: '#/definitions/internal_handlers.AssessmentResponse'
+        "404":
+          description: Error generating topic assessment
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Generate assessment question for the topic
       tags:
       - topics
   /topics/roadmap/{id}:

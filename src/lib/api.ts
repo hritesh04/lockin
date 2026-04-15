@@ -33,6 +33,11 @@ export type QuizActivity = {
   completed_at: string;
 };
 
+export type UserAnswer = {
+  question: Question;
+  answer: string;
+};
+
 export type UserActivityData = {
   day: string;
   lessons: LessonActivity[];
@@ -318,6 +323,33 @@ export async function updateProgress(lessonId: string, signal?: AbortSignal): Pr
   if (!data.success){
     throw new Error("Failed to update progress");
   }
+  return data.data;
+}
+
+export async function generateTopicAssessment(
+  params: { title: string; familiarity_level: string },
+  signal?: AbortSignal
+): Promise<{ topic: string; questions: Question[] }> {
+  const { data } = await apiClient.post<{ success: boolean; data: { topic: string; questions: ApiQuestionRaw[] } }>(
+    '/topics/assessment',
+    params,
+    { signal }
+  );
+  return {
+    topic: data.data.topic,
+    questions: data.data.questions.map(mapSessionQuestion),
+  };
+}
+
+export async function evaluateTopicAssessment(
+  params: { topic: string; assessment: UserAnswer[] },
+  signal?: AbortSignal
+): Promise<ApiTopic> {
+  const { data } = await apiClient.post<{ success: boolean; data: ApiTopic }>(
+    '/topics/assessment/evaluate',
+    params,
+    { signal }
+  );
   return data.data;
 }
 

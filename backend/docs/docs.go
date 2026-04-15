@@ -480,6 +480,37 @@ const docTemplate = `{
                 }
             }
         },
+        "/topics/assessment": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generate question for assessment of user's knowledge on the topic",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "topics"
+                ],
+                "summary": "Generate assessment question for the topic",
+                "responses": {
+                    "200": {
+                        "description": "Assessment questions",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.AssessmentResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Error generating topic assessment",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/topics/roadmap/{id}": {
             "get": {
                 "security": [
@@ -836,6 +867,26 @@ const docTemplate = `{
                 },
                 "longestStreak": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_handlers.AssessmentResponse": {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "object",
+                    "properties": {
+                        "data": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Question"
+                            }
+                        }
+                    }
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
                 }
             }
         },

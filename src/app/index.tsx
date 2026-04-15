@@ -15,8 +15,9 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createTopic, getActivity, getMe, isAbortError, listTopics, proficiencyToApi } from '../lib/api';
+import { createTopic, generateTopicAssessment, getActivity, getMe, isAbortError, listTopics, proficiencyToApi } from '../lib/api';
 import { useAuthStore } from '../store/auth';
+import { useSessionStore } from '../store/session';
 import { Topic, useTopicsStore } from '../store/topics';
 import { useUserStore } from '../store/user';
 
@@ -126,25 +127,50 @@ export default function HomeScreen() {
     const controller = new AbortController();
 
     try {
-      const { topic: apiTopic } = await createTopic({
-        title: topicName.trim(),
-        familiarity_level: proficiencyToApi(selectedProficiency),
-      }, controller.signal);
-      // Map and append directly
-      const newTopic: Topic = {
-          id: apiTopic.id,
-          title: apiTopic.title,
-          currentTier: apiTopic.currentTier ?? 1,
-          familiarityLevel: apiTopic.familiarityLevel ?? 'beginner',
-          accuracyPercent: 0,
-          sessionsCompleted: 0,
-          weakConcepts: [],
-          status: 'generating',
-      };
-      addTopic(newTopic);
-      setShowModal(false);
-      setTopicName('');
-      setSelectedProficiency('beginner');
+      if (selectedProficiency === 'beginner') {
+        const { topic: apiTopic } = await createTopic({
+          title: topicName.trim(),
+          familiarity_level: proficiencyToApi(selectedProficiency),
+        }, controller.signal);
+        
+        const newTopic: Topic = {
+            id: apiTopic.id,
+            title: apiTopic.title,
+            currentTier: apiTopic.currentTier ?? 1,
+            familiarityLevel: apiTopic.familiarityLevel ?? 'beginner',
+            accuracyPercent: 0,
+            sessionsCompleted: 0,
+            weakConcepts: [],
+            status: 'generating',
+        };
+        addTopic(newTopic);
+        setShowModal(false);
+        setTopicName('');
+        setSelectedProficiency('beginner');
+      } else {
+        // Diagnostic flow
+        const res = await generateTopicAssessment({
+          title: topicName.trim(),
+          familiarity_level: proficiencyToApi(selectedProficiency),
+        }, controller.signal);
+
+        // Pre-load session store with questions
+        useSessionStore.getState().startSession('diagnostic', res.questions);
+
+        setShowModal(false);
+        const savedTopicName = topicName.trim();
+        setTopicName('');
+        setSelectedProficiency('beginner');
+        
+        router.push({
+          pathname: '/topics/diagnostic/session' as any,
+          params: { 
+            topicName: savedTopicName,
+            isDiagnostic: 'true',
+            proficiency: selectedProficiency,
+          }
+        });
+      }
     } catch (e) {
       if (!isAbortError(e)) {
         console.error(e);
