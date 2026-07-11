@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
 
 var Pool *pgxpool.Pool
 
@@ -17,7 +19,15 @@ func Connect() error {
 	if dsn == "" {
 		return fmt.Errorf("DATABASE_URL environment variable is not set")
 	}
-
+	
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{}
+			return d.DialContext(ctx, "udp", "8.8.8.8:53")
+		},
+	}
+	
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return fmt.Errorf("error parsing database URL: %w", err)

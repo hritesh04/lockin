@@ -25,7 +25,7 @@ func Load() *Config {
 
 	cfg := &Config{
 		Port:            getEnv("PORT", "8080"),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		DatabaseURL:     getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/lockin"),  
 		AIProvider:      getEnv("AI_PROVIDER", "openai"),
 		ReadTimeout:     10 * time.Second,
 		WriteTimeout:    10 * time.Second,
