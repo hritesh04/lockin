@@ -24,10 +24,10 @@ type AuthTokenResponse struct {
 	Data    AuthTokenData `json:"data"`
 }
 
-
 type UserAnswer struct {
-	Question models.Question `json:"question"`
-	Answer   string   `json:"answer"`
+	Question   models.Question `json:"question"`
+	Answer     string          `json:"answer"`
+	Confidence string          `json:"confidence,omitempty"` // "low" | "med" | "high"
 }
 
 type RefreshTokenData struct {
@@ -89,29 +89,10 @@ type CompleteSessionResponse struct {
 	Data    CompleteSessionData `json:"data"`
 }
 
-type LessonActivity struct {
-	Title       string `json:"title"`
-	CreatedAt   string `json:"created_at"`
-	CompletedAt string `json:"completed_at"`
-}
-
-type QuizActivity struct {
-	TopicName   string `json:"topic_name"`
-	CreatedAt   string `json:"created_at"`
-	CompletedAt string `json:"completed_at"`
-}
-
-type UserActivityData struct {
-	Day       string           `json:"day"`
-	Lessons   []LessonActivity `json:"lessons"`
-	Quizes    []QuizActivity   `json:"quizes"`
-	TotalTime int              `json:"total_time"` // in seconds
-}
-
 type UserActivityInfo struct {
-	ActiveStreak  int                `json:"active_streak" example:"3"`
-	HighestStreak int                `json:"highest_streak" example:"10"`
-	Activity      []UserActivityData `json:"activity"`
+	ActiveStreak  int                       `json:"active_streak" example:"3"`
+	HighestStreak int                       `json:"highest_streak" example:"10"`
+	Activity      []models.UserActivityData `json:"activity"`
 }
 
 type GetUserActivityResponse struct {
@@ -120,8 +101,8 @@ type GetUserActivityResponse struct {
 }
 
 type AssessmentResponse struct {
-	Success bool             `json:"success" example:"true"`
-	Data    struct{
+	Success bool `json:"success" example:"true"`
+	Data    struct {
 		Questions []models.Question `json:"data"`
 	} `json:"questions"`
 }

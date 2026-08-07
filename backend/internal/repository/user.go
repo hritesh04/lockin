@@ -12,7 +12,7 @@ type userRepository struct {
 	db *pgxpool.Pool
 }
 
-func NewUserRepository(db *pgxpool.Pool)*userRepository {
+func NewUserRepository(db *pgxpool.Pool) *userRepository {
 	return &userRepository{db: db}
 }
 
@@ -29,19 +29,27 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (mode
 	var user models.User
 	var passwordHash string
 	err := r.db.QueryRow(ctx,
-		"SELECT id, email, password_hash, current_streak, longest_streak, last_session_date, created_at FROM users WHERE email = $1 AND deleted_at IS NULL",
+		"SELECT id, email, password_hash, current_streak, longest_streak, last_session_date, goal, daily_commitment, onboarding_completed, created_at FROM users WHERE email = $1 AND deleted_at IS NULL",
 		email,
-	).Scan(&user.ID, &user.Email, &passwordHash, &user.CurrentStreak, &user.LongestStreak, &user.LastSessionDate, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &passwordHash, &user.CurrentStreak, &user.LongestStreak, &user.LastSessionDate, &user.Goal, &user.DailyCommitment, &user.OnboardingCompleted, &user.CreatedAt)
 	return user, passwordHash, err
 }
 
 func (r *userRepository) GetUserByID(ctx context.Context, id string) (models.User, error) {
 	var user models.User
 	err := r.db.QueryRow(ctx,
-		"SELECT id, email, current_streak, longest_streak, last_session_date, created_at FROM users WHERE id = $1 AND deleted_at IS NULL",
+		"SELECT id, email, current_streak, longest_streak, last_session_date, goal, daily_commitment, onboarding_completed, created_at FROM users WHERE id = $1 AND deleted_at IS NULL",
 		id,
-	).Scan(&user.ID, &user.Email, &user.CurrentStreak, &user.LongestStreak, &user.LastSessionDate, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.CurrentStreak, &user.LongestStreak, &user.LastSessionDate, &user.Goal, &user.DailyCommitment, &user.OnboardingCompleted, &user.CreatedAt)
 	return user, err
+}
+
+func (r *userRepository) UpdateOnboarding(ctx context.Context, userID string, goal *string, dailyCommitment *int, onboardingCompleted bool) error {
+	_, err := r.db.Exec(ctx,
+		"UPDATE users SET goal = COALESCE($1, goal), daily_commitment = COALESCE($2, daily_commitment), onboarding_completed = CASE WHEN $3 THEN true ELSE onboarding_completed END WHERE id = $4 AND deleted_at IS NULL",
+		goal, dailyCommitment, onboardingCompleted, userID,
+	)
+	return err
 }
 
 func (r *userRepository) SaveRefreshToken(ctx context.Context, userID string, refreshToken string) error {

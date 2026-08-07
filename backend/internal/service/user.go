@@ -7,8 +7,11 @@ import (
 
 	"github.com/acerowl/lockin/backend/internal/lib"
 	"github.com/acerowl/lockin/backend/internal/models"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var ErrEmailExists = errors.New("email already registered")
 
 type UserRepository interface {
 	CreateUser(ctx context.Context, email, passwordHash string) (models.User, error)
@@ -17,6 +20,7 @@ type UserRepository interface {
 	SaveRefreshToken(ctx context.Context, userID string, refreshToken string) error
 	CheckUserRefreshToken(ctx context.Context, userID string, refreshToken string) (bool, error)
 	UpdateStreak(ctx context.Context, userID string, current, longest int, lastDate time.Time) error
+	UpdateOnboarding(ctx context.Context, userID string, goal *string, dailyCommitment *int, onboardingCompleted bool) error
 }
 
 type authService struct {
@@ -35,6 +39,10 @@ func (s *authService) Register(ctx context.Context, email, password string) (str
 
 	user, err := s.repo.CreateUser(ctx, email, string(hash))
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return "", "", models.User{}, ErrEmailExists
+		}
 		return "", "", models.User{}, err
 	}
 
@@ -69,7 +77,7 @@ func (s *authService) Login(ctx context.Context, email, password string) (string
 }
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
-	userID, err := lib.ValidateToken(refreshToken)
+	userID, err := lib.ValidateRefreshToken(refreshToken)
 	if err != nil {
 		return "", "", errors.New("invalid or expired refresh token")
 	}
@@ -91,6 +99,10 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (st
 
 func (s *authService) GetMe(ctx context.Context, userID string) (models.User, error) {
 	return s.repo.GetUserByID(ctx, userID)
+}
+
+func (s *authService) UpdateOnboarding(ctx context.Context, userID string, goal *string, dailyCommitment *int, onboardingCompleted bool) error {
+	return s.repo.UpdateOnboarding(ctx, userID, goal, dailyCommitment, onboardingCompleted)
 }
 
 func (s *authService) ForgotPassword(ctx context.Context, email string) error {

@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"errors"
+
+	"github.com/acerowl/lockin/backend/internal/service"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -26,6 +29,13 @@ type ForgotPasswordReq struct {
 	Email string `json:"email" example:"user@example.com"`
 }
 
+// UpdateMeReq is the request body for PATCH /users/me
+type UpdateMeReq struct {
+	Goal                *string `json:"goal" example:"Academic Excellence"`
+	DailyCommitment     *int    `json:"daily_commitment" example:"15"`
+	OnboardingCompleted *bool   `json:"onboarding_completed" example:"true"`
+}
+
 // Register godoc
 // @Summary      Register a new user
 // @Description  Creates a new user account and returns access + refresh tokens
@@ -45,7 +55,10 @@ func (h *APIHandler) Register(c *fiber.Ctx) error {
 
 	token, refreshToken, _, err := h.Auth.Register(c.Context(), req.Email, req.Password)
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Registration failed: " + err.Error()})
+		if errors.Is(err, service.ErrEmailExists) {
+			return c.Status(400).JSON(fiber.Map{"success": false, "error": "An account with this email may already exist."})
+		}
+		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Registration failed. Please try again."})
 	}
 
 	return c.JSON(AuthTokenResponse{
@@ -75,7 +88,7 @@ func (h *APIHandler) Login(c *fiber.Ctx) error {
 	}
 	token, refreshToken, err := h.Auth.Login(c.Context(), req.Email, req.Password)
 	if err != nil {
-		return c.Status(401).JSON(fiber.Map{"success": false, "error": err.Error()})
+		return c.Status(401).JSON(fiber.Map{"success": false, "error": "Invalid email or password"})
 	}
 
 	return c.JSON(AuthTokenResponse{
@@ -106,7 +119,7 @@ func (h *APIHandler) RefreshToken(c *fiber.Ctx) error {
 
 	newToken, newRefreshToken, err := h.Auth.RefreshToken(c.Context(), req.RefreshToken)
 	if err != nil {
-		return c.Status(401).JSON(fiber.Map{"success": false, "error": err.Error()})
+		return c.Status(401).JSON(fiber.Map{"success": false, "error": "Invalid or expired refresh token"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -140,7 +153,45 @@ func (h *APIHandler) GetMe(c *fiber.Ctx) error {
 	})
 }
 
-// ForgotPassword godoc
+// UpdateMe godoc
+// @Summary      Update current user profile
+// @Description  Updates onboarding fields (goal, daily_commitment, onboarding_completed) for the authenticated user
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body  body      UpdateMeReq       true  "Fields to update"
+// @Success      200   {object}  UserResponse      "Updated user profile"
+// @Failure      400   {object}  ErrorResponse     "Invalid request payload"
+// @Failure      500   {object}  ErrorResponse     "Internal server error"
+// @Router       /users/me [patch]
+func (h *APIHandler) UpdateMe(c *fiber.Ctx) error {
+	userIDStr := c.Locals("user_id").(string)
+
+	var req UpdateMeReq
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
+	}
+
+	onboardingCompleted := false
+	if req.OnboardingCompleted != nil {
+		onboardingCompleted = *req.OnboardingCompleted
+	}
+
+	if err := h.Auth.UpdateOnboarding(c.Context(), userIDStr, req.Goal, req.DailyCommitment, onboardingCompleted); err != nil {
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to update profile"})
+	}
+
+	user, err := h.Auth.GetMe(c.Context(), userIDStr)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "error": "User not found"})
+	}
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    user,
+	})
+}
+
 // @Summary      Request password reset
 // @Description  Sends a password reset token to the user's email (simulated)
 // @Tags         auth

@@ -12,7 +12,7 @@ import (
 
 // AIGenerator defines the behavior required for AI operations
 type AIGenerator interface {
-	GenerateRoadmap(ctx context.Context, id string, title string, proficiency string) error
+	GenerateRoadmap(ctx context.Context, id string, title string, proficiency string, recommendedFocus string) error
 	EvaluateTopicAssessment(ctx context.Context, topic string, answers string) (ai.TopicEvaluationAIResponse, error)
 }
 
@@ -65,7 +65,13 @@ func (s *topicService) CreateTopic(ctx context.Context, userID string, title str
 	if err != nil {
 		return models.Topic{}, err
 	}
-	go s.aiGen.GenerateRoadmap(ctx, topic.ID, title, familiarityLevel)
+	goCtx := context.Background()
+	go func() {
+		if !s.repo.IsUserTopic(goCtx, userID, topic.ID) {
+			return
+		}
+		_ = s.aiGen.GenerateRoadmap(goCtx, topic.ID, title, familiarityLevel, "")
+	}()
 	return topic, nil
 }
 
@@ -87,14 +93,14 @@ func (s *topicService) GetRoadmap(ctx context.Context, topicID, userID string) (
 	}
 	roadmap, err := s.repo.GetRoadmap(ctx, topicID, userID)
 	if err != nil {
-		log.Println("Error fetching roadmap:",err)
+		log.Println("Error fetching roadmap:", err)
 		return nil, err
 	}
 	return roadmap, nil
 }
 
-func (s *topicService) EvaluateAssessmentAndCreateTopic(ctx context.Context,userID string, topic string,resposne string) (models.Topic, error) {
-	evaluation, err := s.aiGen.EvaluateTopicAssessment(ctx,topic,resposne)
+func (s *topicService) EvaluateAssessmentAndCreateTopic(ctx context.Context, userID string, topic string, resposne string) (models.Topic, error) {
+	evaluation, err := s.aiGen.EvaluateTopicAssessment(ctx, topic, resposne)
 	if err != nil {
 		return models.Topic{}, err
 	}
@@ -108,9 +114,15 @@ func (s *topicService) EvaluateAssessmentAndCreateTopic(ctx context.Context,user
 		Status: "generating",
 	}
 
-	if err := s.repo.Create(ctx, newTopic);err != nil {
+	if err := s.repo.Create(ctx, newTopic); err != nil {
 		return models.Topic{}, err
 	}
-	go s.aiGen.GenerateRoadmap(ctx, newTopic.ID, topic, fmt.Sprintf("%s - TIER: %d",evaluation.NewRemark,evaluation.NewTier))
+	goCtx := context.Background()
+	go func() {
+		if !s.repo.IsUserTopic(goCtx, userID, newTopic.ID) {
+			return
+		}
+		_ = s.aiGen.GenerateRoadmap(goCtx, newTopic.ID, topic, fmt.Sprintf("%s - TIER: %d", evaluation.NewRemark, evaluation.NewTier), evaluation.RecommendedFocus)
+	}()
 	return newTopic, nil
 }

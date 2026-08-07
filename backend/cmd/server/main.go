@@ -28,6 +28,7 @@ import (
 	"github.com/acerowl/lockin/backend/internal/config"
 	"github.com/acerowl/lockin/backend/internal/db"
 	"github.com/acerowl/lockin/backend/internal/handlers"
+	"github.com/acerowl/lockin/backend/internal/lib"
 	"github.com/acerowl/lockin/backend/internal/middleware"
 	"github.com/acerowl/lockin/backend/internal/repository"
 	"github.com/acerowl/lockin/backend/internal/service"
@@ -43,6 +44,9 @@ import (
 func main() {
 	// Load configuration
 	cfg := config.Load()
+
+	// Fail fast if the JWT signing secret is missing or too short.
+	lib.EnsureJWTSecret()
 
 	// Connect to database
 	if err := db.Connect(); err != nil {
@@ -64,7 +68,7 @@ func main() {
 			}
 			return c.Status(code).JSON(fiber.Map{
 				"success": false,
-				"error":   err.Error(),
+				"error":   "Internal server error",
 			})
 		},
 	})
@@ -78,8 +82,12 @@ func main() {
 	}))
 
 	// CORS middleware for mobile/web clients
+	allowOrigins := os.Getenv("CORS_ALLOW_ORIGINS")
+	if allowOrigins == "" {
+		allowOrigins = "*"
+	}
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins: allowOrigins,
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 
@@ -88,8 +96,10 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
-	// Swagger UI
-	app.Get("/docs/*", fiberSwagger.WrapHandler)
+	// Swagger UI (only when enabled)
+	if os.Getenv("SWAGGER_ENABLED") == "true" {
+		app.Get("/docs/*", fiberSwagger.WrapHandler)
+	}
 
 	// Dependency Injection
 	provider := ai.NewAIProvider(cfg.AIProvider)
@@ -100,18 +110,20 @@ func main() {
 	moduleRepo := repository.NewModuleRepository(db.Pool)
 	lessonRepo := repository.NewLessonRepository(db.Pool)
 	sessionRepo := repository.NewSessionRepository(db.Pool)
+	reviewRepo := repository.NewReviewRepository(db.Pool)
 
 	authService := service.NewAuthService(userRepo)
 	topicService := service.NewTopicService(topicRepo, aiGen)
 	moduleService := service.NewModuleService(moduleRepo)
 	lessonService := service.NewLessonService(lessonRepo, moduleRepo)
-	sessionService := service.NewSessionService(sessionRepo, topicRepo, userRepo, aiGen)
+	sessionService := service.NewSessionService(sessionRepo, topicRepo, userRepo, aiGen, reviewRepo)
+	reviewService := service.NewReviewService(reviewRepo, topicRepo, aiGen)
 
-	apiHandler := handlers.NewAPIHandler(aiGen, authService, topicService, moduleService, lessonService, sessionService)
+	apiHandler := handlers.NewAPIHandler(aiGen, authService, topicService, moduleService, lessonService, sessionService, reviewService)
 
 	// API Routes
 	api := app.Group("/api/v1")
-	authGroup := api.Group("/auth")
+	authGroup := api.Group("/auth", middleware.AuthRateLimit())
 	authGroup.Post("/register", apiHandler.Register)
 	authGroup.Post("/login", apiHandler.Login)
 	authGroup.Post("/refresh", apiHandler.RefreshToken)
@@ -119,14 +131,16 @@ func main() {
 
 	usersGroup := api.Group("/users", middleware.Protected())
 	usersGroup.Get("/me", apiHandler.GetMe)
+	usersGroup.Patch("/me", apiHandler.UpdateMe)
 
 	topicsGroup := api.Group("/topics", middleware.Protected())
 	topicsGroup.Get("/", apiHandler.ListTopics)
 	topicsGroup.Post("/", apiHandler.CreateTopic)
 	topicsGroup.Get("/:id", apiHandler.GetTopic)
 	topicsGroup.Get("/roadmap/:id", apiHandler.GetRoadmap)
-	topicsGroup.Post("/assessment", apiHandler.CreateTopicAssessment)
-	topicsGroup.Post("/assessment/evaluate", apiHandler.EvaluateTopicAssessment)
+	topicsGroup.Post("/assessment", middleware.AIRateLimit(), apiHandler.CreateTopicAssessment)
+	topicsGroup.Post("/assessment/evaluate", middleware.AIRateLimit(), apiHandler.EvaluateTopicAssessment)
+	topicsGroup.Post("/:id/review-cards/generate", middleware.AIRateLimit(), apiHandler.GenerateReviewCards)
 
 	moduleGroup := api.Group("/modules", middleware.Protected())
 	moduleGroup.Post("/status/:id", apiHandler.UpdateModuleStatus)
@@ -135,9 +149,17 @@ func main() {
 	lessonGroup.Post("/progress/:id", apiHandler.Progress)
 
 	sessionsGroup := api.Group("/sessions", middleware.Protected())
-	sessionsGroup.Post("/start", apiHandler.StartSession)
+	sessionsGroup.Post("/start", middleware.AIRateLimit(), apiHandler.StartSession)
 	sessionsGroup.Post("/:id/complete", apiHandler.CompleteSession)
+	sessionsGroup.Post("/:id/socratic", middleware.AIRateLimit(), apiHandler.SocraticFollowUp)
 	sessionsGroup.Get("/activity", apiHandler.GetUserActivity)
+
+	reviewsGroup := api.Group("/reviews", middleware.Protected())
+	reviewsGroup.Get("/due", apiHandler.GetDueReviews)
+	reviewsGroup.Get("/due/count", apiHandler.GetReviewDueCount)
+	reviewsGroup.Get("/stats", apiHandler.GetReviewStats)
+	reviewsGroup.Get("/retention", apiHandler.GetRetentionByTopic)
+	reviewsGroup.Post("/:id/rate", apiHandler.RateReviewCard)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)

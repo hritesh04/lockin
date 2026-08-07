@@ -16,6 +16,17 @@ func NewModuleRepository(db *pgxpool.Pool) *moduleRepository {
 	return &moduleRepository{db: db}
 }
 
+func (r *moduleRepository) IsUserModule(ctx context.Context, moduleID, userID string) bool {
+	var id string
+	err := r.db.QueryRow(ctx,
+		`SELECT m.id FROM modules m
+		 JOIN topics t ON m.topic_id = t.id
+		 WHERE m.id = $1 AND t.user_id = $2`,
+		moduleID, userID,
+	).Scan(&id)
+	return err == nil
+}
+
 func (r *moduleRepository) GetByID(ctx context.Context, moduleID string) (*models.Module, error) {
 	var m models.Module
 	err := r.db.QueryRow(ctx,

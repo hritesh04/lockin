@@ -15,7 +15,6 @@ type CreateTopicReq struct {
 	FamiliarityLevel string `json:"familiarity_level" example:"beginner"` // beginner, intermediate, advanced
 }
 
-
 // CreateTopic godoc
 // @Summary      Create a topic
 // @Description  Creates a new learning topic. An initial tier is assigned based on familiarity_level (beginner=1, intermediate=4, advanced=7). After AI generates the roadmap, the tier is updated based on the AI response.
@@ -42,7 +41,7 @@ func (h *APIHandler) CreateTopic(c *fiber.Ctx) error {
 
 	topic, err := h.Topic.CreateTopic(c.Context(), userID, req.Title, req.FamiliarityLevel)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to create topic: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to create topic"})
 	}
 	return c.Status(201).JSON(fiber.Map{
 		"success": true,
@@ -140,27 +139,27 @@ func (h *APIHandler) GetRoadmap(c *fiber.Ctx) error {
 // @Success      200  {object}  AssessmentResponse  "Assessment questions"
 // @Failure      404  {object}  ErrorResponse    "Error generating topic assessment"
 // @Router       /topics/assessment [post]
-func (h *APIHandler) CreateTopicAssessment(c *fiber.Ctx) error {	
+func (h *APIHandler) CreateTopicAssessment(c *fiber.Ctx) error {
 	var req CreateTopicReq
 	if err := c.BodyParser(&req); err != nil {
-		log.Println("Error unmarshalling req body",err)
+		log.Println("Error unmarshalling req body", err)
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
 	}
 
-	if req.FamiliarityLevel == "" || req.Title == ""{
+	if req.FamiliarityLevel == "" || req.Title == "" {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "familiarity_level is required"})
 	}
-	
-	questions, err := h.AI.GenerateTopicAssessment(c.Context(),req.Title,req.FamiliarityLevel)
+
+	questions, err := h.AI.GenerateTopicAssessment(c.Context(), req.Title, req.FamiliarityLevel)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to generate topic assessment: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to generate topic assessment"})
 	}
 
 	return c.Status(200).JSON(fiber.Map{
 		"success": true,
 		"data": fiber.Map{
-			"topic":req.Title,
-			"questions":questions.Questions,
+			"topic":     req.Title,
+			"questions": questions.Questions,
 		},
 	})
 }
@@ -169,31 +168,31 @@ func (h *APIHandler) EvaluateTopicAssessment(c *fiber.Ctx) error {
 	userIDStr := c.Locals("user_id").(string)
 	var req TopicAssessmentEvaluationReq
 	if err := c.BodyParser(&req); err != nil {
-		log.Println("Error unmarshalling req body",err)
+		log.Println("Error unmarshalling req body", err)
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
 	}
 
 	if req.Topic == "" {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "invalid request body"})
 	}
-	
+
 	answersJSON := ""
 	if len(req.Assessment) > 0 {
-		b,err := json.Marshal(req.Assessment)
+		b, err := json.Marshal(req.Assessment)
 		answersJSON = string(b)
 		if err != nil {
-			log.Println("Error marshalling assessment",err)
+			log.Println("Error marshalling assessment", err)
 			return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
 		}
 	}
 
-	topic, err := h.Topic.EvaluateAssessmentAndCreateTopic(c.Context(),userIDStr,req.Topic,answersJSON)
+	topic, err := h.Topic.EvaluateAssessmentAndCreateTopic(c.Context(), userIDStr, req.Topic, answersJSON)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to evaluate topic assessment: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to evaluate topic assessment"})
 	}
 
 	return c.Status(200).JSON(fiber.Map{
 		"success": true,
-		"data": topic,
+		"data":    topic,
 	})
 }

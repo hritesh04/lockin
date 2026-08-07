@@ -95,8 +95,8 @@ func (g *GeminiClient) GenerateRoadmap(ctx context.Context, prompt string) (stri
 													Description: "Order of the question in the quiz",
 												},
 												"type": {
-													Type: genai.TypeString,
-													Enum: []string{"mcq", "true_false", "fill_blank", "short_answer"},
+													Type:        genai.TypeString,
+													Enum:        []string{"mcq", "true_false", "fill_blank", "short_answer"},
 													Description: "Type of question",
 												},
 												"question": {
@@ -107,14 +107,14 @@ func (g *GeminiClient) GenerateRoadmap(ctx context.Context, prompt string) (stri
 													Type: genai.TypeArray,
 													Items: &genai.Schema{
 														Type:     genai.TypeObject,
-														Required: []string{"label", "index","explanation","is_correct"},
+														Required: []string{"label", "index", "explanation", "is_correct"},
 														Properties: map[string]*genai.Schema{
 															"label": {
-																Type: genai.TypeString,
+																Type:        genai.TypeString,
 																Description: "The label of the option",
 															},
 															"index": {
-																Type: genai.TypeInteger,
+																Type:        genai.TypeInteger,
 																Description: "Order of the option in the options",
 															},
 															"explanation": {
@@ -122,7 +122,7 @@ func (g *GeminiClient) GenerateRoadmap(ctx context.Context, prompt string) (stri
 																Description: "Why this option is correct/incorrect",
 															},
 															"is_correct": {
-																Type: genai.TypeBoolean,
+																Type:        genai.TypeBoolean,
 																Description: "Whether this option is correct",
 															},
 														},
@@ -141,15 +141,15 @@ func (g *GeminiClient) GenerateRoadmap(ctx context.Context, prompt string) (stri
 		},
 	}
 
-	res, err :=  g.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", genai.Text(prompt), &genai.GenerateContentConfig{
+	res, err := g.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", genai.Text(prompt), &genai.GenerateContentConfig{
 		ResponseMIMEType: "application/json",
 		ResponseSchema:   schema,
 	})
 	if err != nil {
-		return "",err
+		return "", err
 	}
-	fmt.Printf("%+v",res.Text())
-	return res.Text(),nil
+	fmt.Printf("%+v", res.Text())
+	return res.Text(), nil
 }
 
 func (g *GeminiClient) GenerateTopicQuestions(ctx context.Context, prompt string) (string, error) {
@@ -168,26 +168,33 @@ func (g *GeminiClient) GenerateTopicQuestions(ctx context.Context, prompt string
 							Description: "Order of the question in the quiz",
 						},
 						"type": {
-							Type: genai.TypeString,
-							Enum: []string{"mcq", "true_false", "fill_blank", "short_answer"},
+							Type:        genai.TypeString,
+							Enum:        []string{"mcq", "true_false", "fill_blank", "short_answer"},
 							Description: "Type of question",
 						},
 						"question": {
 							Type:        genai.TypeString,
 							Description: "The question text",
 						},
+						"concept_tags": {
+							Type: genai.TypeArray,
+							Items: &genai.Schema{
+								Type: genai.TypeString,
+							},
+							Description: "1-3 shortest snake_case tags for the concept(s) this question targets",
+						},
 						"options": {
 							Type: genai.TypeArray,
 							Items: &genai.Schema{
 								Type:     genai.TypeObject,
-								Required: []string{"label", "index","explanation","is_correct"},
+								Required: []string{"label", "index", "explanation", "is_correct"},
 								Properties: map[string]*genai.Schema{
 									"label": {
-										Type: genai.TypeString,
+										Type:        genai.TypeString,
 										Description: "The label of the option",
 									},
 									"index": {
-										Type: genai.TypeInteger,
+										Type:        genai.TypeInteger,
 										Description: "Order of the option in the options",
 									},
 									"explanation": {
@@ -195,7 +202,7 @@ func (g *GeminiClient) GenerateTopicQuestions(ctx context.Context, prompt string
 										Description: "Why this option is correct/incorrect",
 									},
 									"is_correct": {
-										Type: genai.TypeBoolean,
+										Type:        genai.TypeBoolean,
 										Description: "Whether this option is correct",
 									},
 								},
@@ -208,15 +215,15 @@ func (g *GeminiClient) GenerateTopicQuestions(ctx context.Context, prompt string
 		},
 	}
 
-	res, err :=  g.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", genai.Text(prompt), &genai.GenerateContentConfig{
+	res, err := g.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", genai.Text(prompt), &genai.GenerateContentConfig{
 		ResponseMIMEType: "application/json",
 		ResponseSchema:   schema,
 	})
 	if err != nil {
-		return "",err
+		return "", err
 	}
-	fmt.Printf("%+v",res.Text())
-	return res.Text(),nil
+	fmt.Printf("%+v", res.Text())
+	return res.Text(), nil
 }
 
 func (g *GeminiClient) EvaluateTopicSession(ctx context.Context, prompt string) (string, error) {
@@ -225,25 +232,29 @@ func (g *GeminiClient) EvaluateTopicSession(ctx context.Context, prompt string) 
 		Required: []string{"new_tier", "new_remark"},
 		Properties: map[string]*genai.Schema{
 			"new_tier": {
-				Type: genai.TypeInteger,
+				Type:        genai.TypeInteger,
 				Description: "The new user knowledge tier for the topic",
 			},
 			"new_remark": {
-				Type: genai.TypeString,
+				Type:        genai.TypeString,
 				Description: "The new remark of user's knowledge for the topic",
+			},
+			"recommended_focus": {
+				Type:        genai.TypeString,
+				Description: "A single actionable sentence for what the user should focus on next",
 			},
 		},
 	}
 
-	res, err :=  g.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", genai.Text(prompt), &genai.GenerateContentConfig{
+	res, err := g.client.Models.GenerateContent(ctx, "gemini-2.5-flash-lite", genai.Text(prompt), &genai.GenerateContentConfig{
 		ResponseMIMEType: "application/json",
 		ResponseSchema:   schema,
 	})
 	if err != nil {
-		return "",err
+		return "", err
 	}
-	fmt.Printf("%+v",res.Text())
-	return res.Text(),nil
+	fmt.Printf("%+v", res.Text())
+	return res.Text(), nil
 }
 
 func (g *GeminiClient) GenerateAssessmentQuestions(ctx context.Context, prompt string) (string, error) {
@@ -262,13 +273,20 @@ func (g *GeminiClient) GenerateAssessmentQuestions(ctx context.Context, prompt s
 							Description: "Order of the question in the quiz",
 						},
 						"type": {
-							Type: genai.TypeString,
-							Enum: []string{"mcq", "true_false", "fill_blank", "short_answer"},
+							Type:        genai.TypeString,
+							Enum:        []string{"mcq", "true_false", "fill_blank", "short_answer"},
 							Description: "Type of question",
 						},
 						"question": {
 							Type:        genai.TypeString,
 							Description: "The question text",
+						},
+						"concept_tags": {
+							Type: genai.TypeArray,
+							Items: &genai.Schema{
+								Type: genai.TypeString,
+							},
+							Description: "1-3 shortest snake_case tags for the concept(s) this question targets",
 						},
 						"options": {
 							Type: genai.TypeArray,
@@ -277,11 +295,11 @@ func (g *GeminiClient) GenerateAssessmentQuestions(ctx context.Context, prompt s
 								Required: []string{"label", "index"},
 								Properties: map[string]*genai.Schema{
 									"label": {
-										Type: genai.TypeString,
+										Type:        genai.TypeString,
 										Description: "The label of the option",
 									},
 									"index": {
-										Type: genai.TypeInteger,
+										Type:        genai.TypeInteger,
 										Description: "Order of the option in the options",
 									},
 								},
@@ -294,12 +312,82 @@ func (g *GeminiClient) GenerateAssessmentQuestions(ctx context.Context, prompt s
 		},
 	}
 
-	res, err :=  g.client.Models.GenerateContent(ctx, g.model, genai.Text(prompt), &genai.GenerateContentConfig{
+	res, err := g.client.Models.GenerateContent(ctx, g.model, genai.Text(prompt), &genai.GenerateContentConfig{
 		ResponseMIMEType: "application/json",
 		ResponseSchema:   schema,
 	})
 	if err != nil {
-		return "",err
+		return "", err
 	}
-	return res.Text(),nil
+	return res.Text(), nil
+}
+
+func (g *GeminiClient) GenerateReviewCards(ctx context.Context, prompt string) (string, error) {
+	schema := &genai.Schema{
+		Type:     genai.TypeObject,
+		Required: []string{"cards"},
+		Properties: map[string]*genai.Schema{
+			"cards": {
+				Type: genai.TypeArray,
+				Items: &genai.Schema{
+					Type:     genai.TypeObject,
+					Required: []string{"prompt", "answer", "concept_tag"},
+					Properties: map[string]*genai.Schema{
+						"prompt": {
+							Type:        genai.TypeString,
+							Description: "The recall prompt on the front of the card. Must never contain the answer.",
+						},
+						"answer": {
+							Type:        genai.TypeString,
+							Description: "The answer on the back of the card.",
+						},
+						"concept_tag": {
+							Type:        genai.TypeString,
+							Description: "A short concept tag this card covers.",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	res, err := g.client.Models.GenerateContent(ctx, g.model, genai.Text(prompt), &genai.GenerateContentConfig{
+		ResponseMIMEType: "application/json",
+		ResponseSchema:   schema,
+	})
+	if err != nil {
+		return "", err
+	}
+	return res.Text(), nil
+}
+
+func (g *GeminiClient) GenerateSocraticFollowUp(ctx context.Context, prompt string) (string, error) {
+	schema := &genai.Schema{
+		Type:     genai.TypeObject,
+		Required: []string{"follow_up", "feedback", "explanation"},
+		Properties: map[string]*genai.Schema{
+			"follow_up": {
+				Type:        genai.TypeString,
+				Description: "A follow-up prompt that probes the reasoning behind the user's answer (a \"Why?\", \"How does this relate to...?\", or \"What would happen if...?\" question). Must not reveal the correct answer.",
+			},
+			"feedback": {
+				Type:        genai.TypeString,
+				Enum:        []string{"correct", "partial", "wrong"},
+				Description: "Conceptual accuracy of the user's answer (correct/partial/wrong), not exact wording.",
+			},
+			"explanation": {
+				Type:        genai.TypeString,
+				Description: "1-2 sentences of growth-framed coaching: confirm what was right, correct any misconception, point at the follow-up.",
+			},
+		},
+	}
+
+	res, err := g.client.Models.GenerateContent(ctx, g.model, genai.Text(prompt), &genai.GenerateContentConfig{
+		ResponseMIMEType: "application/json",
+		ResponseSchema:   schema,
+	})
+	if err != nil {
+		return "", err
+	}
+	return res.Text(), nil
 }

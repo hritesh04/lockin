@@ -1,6 +1,7 @@
 import SessionComplete from '@/components/SessionComplete';
-import { completeSession, evaluateTopicAssessment, startSession, updateProgress } from '@/lib/api';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { ApiSocraticFollowUp, completeSession, evaluateTopicAssessment, socraticFollowUp, startSession, updateProgress } from '@/lib/api';
+import { tokens } from '@/theme/tokens';
+import { X, MessageCircle } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -16,24 +17,25 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLessonStore } from '../../../../store/lessons';
+import { useLessonStore, Lesson } from '../../../../store/lessons';
 import { useModuleStore } from '../../../../store/modules';
-import { Option, useSessionStore } from '../../../../store/session';
+import { Confidence, Option, useSessionStore, SessionType } from '../../../../store/session';
 import { useTopicsStore } from '../../../../store/topics';
 
 export default function SessionScreen() {
-  const { id, lessonId, quizz, quizMode, topicName, isDiagnostic } = useLocalSearchParams();
+  const { id, lessonId, quizMode, topicName, interleave } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { 
-    questions, 
-    currentIndex, 
-    isCompleted, 
-    score, 
-    startSession: startSessionStore, 
-    submitAnswer, 
-    nextQuestion, 
-    resetSession 
+  const {
+    questions,
+    currentIndex,
+    isCompleted,
+    score,
+    activeSessionId,
+    startSession: startSessionStore,
+    submitAnswer,
+    nextQuestion,
+    resetSession
   } = useSessionStore();
   const topic = useTopicsStore(s => s.topics.find(t => t.id === id));
   const { updateTopicProgress } = useTopicsStore();
@@ -49,26 +51,15 @@ export default function SessionScreen() {
   const [showExplanation, setShowExplanation] = useState(false);
   const [apiFeedback, setApiFeedback] = useState<{ explanation: string; is_correct: boolean } | null>(null);
 
-  // Speech specific state
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [socratic, setSocratic] = useState<ApiSocraticFollowUp | null>(null);
+  const [socraticLoading, setSocraticLoading] = useState(false);
+  const [socraticAnswer, setSocraticAnswer] = useState('');
+  const [socraticDone, setSocraticDone] = useState(false);
+
+  const [confidence, setConfidence] = useState<Confidence | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
 
   const progressAnim = useRef(new Animated.Value(1)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  // Pulse effect just when listening
-  useEffect(() => {
-    if (isListening) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.2, duration: 800, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
-    }
-  }, [isListening]);
 
   useEffect(() => {
     progressAnim.setValue(1);
@@ -86,6 +77,7 @@ export default function SessionScreen() {
       const targetId = typeof id === 'string' ? id : (Array.isArray(id) ? id[0] : '');
       const targetLessonId = typeof lessonId === 'string' ? lessonId : (Array.isArray(lessonId) ? lessonId[0] : '');
       const targetQuizMode = typeof quizMode === 'string' ? quizMode : undefined;
+      const isInterleaved = interleave === 'true';
 
       setLoading(true);
       if (id === 'diagnostic') {
@@ -95,14 +87,30 @@ export default function SessionScreen() {
         };
       }
 
-      startSession({ 
-        topic_id: targetId, 
+      let sessionType: SessionType = 'mcq';
+      if (targetLessonId) {
+        sessionType = 'lesson';
+      } else if (targetQuizMode === 'qna') {
+        sessionType = 'qna';
+      }
+
+      startSession({
+        topic_id: targetId,
         lesson_id: targetLessonId || undefined,
-        quiz_mode: targetLessonId ? 'lesson' : targetQuizMode
+        quiz_mode: targetLessonId ? 'lesson' : targetQuizMode,
+        interleave: isInterleaved
       }, controller.signal)
         .then((res: any) => {
           if (!controller.signal.aborted) {
-            startSessionStore(res.session_id, res.questions);
+            startSessionStore({
+              sessionId: res.session_id,
+              type: sessionType,
+              topicId: targetId,
+              topicTitle: topic?.title,
+              lessonId: targetLessonId,
+              lessonTitle: targetLessonId ? lessons[targetLessonId]?.title : undefined,
+              questions: res.questions,
+            });
             setLoading(false);
           }
         })
@@ -117,53 +125,77 @@ export default function SessionScreen() {
         controller.abort();
         resetSession();
       };
-    }, [id, lessonId])
+    }, [id, lessonId, quizMode, interleave])
   );
 
-  const handleSpeechInput = () => {
-    if (isListening) {
-      setIsListening(false);
-      setAnswer((prev) => prev + (prev.length > 0 ? ' ' : '') + 'I think this is transcribed speech.');
-    } else {
-      setIsListening(true);
-    }
-  };
-
-  const handleSpeakQuestion = () => {
-    setIsSpeaking(true);
-    setTimeout(() => setIsSpeaking(false), 2000);
+  const resetQuestionInputs = () => {
+    setShowExplanation(false);
+    setSelectedOption(null);
+    setAnswer('');
+    setApiFeedback(null);
+    setSocratic(null);
+    setSocraticAnswer('');
+    setSocraticDone(false);
+    setSocraticLoading(false);
+    setConfidence(null);
   };
 
   const handleSubmit = () => {
+    const q = questions[currentIndex];
+    const isMcq = q.format === 'mcq' || q.format === 'true_false';
+
     if (showExplanation) {
-      setShowExplanation(false);
-      setSelectedOption(null);
-      setAnswer('');
-      setApiFeedback(null);
+      resetQuestionInputs();
       nextQuestion();
       return;
     }
 
-    const q = questions[currentIndex];
-    const isMcq = q.format === 'mcq' || q.format === 'true_false';
+    if (socratic && !socraticDone) {
+      if (!socraticAnswer.trim()) return;
+      setSocraticDone(true);
+      setShowExplanation(true);
+      progressAnim.stopAnimation();
+      return;
+    }
 
     if (isMcq && !selectedOption) return;
     if (!isMcq && !answer.trim()) return;
 
     if (isMcq) {
       const isCorrect = selectedOption?.is_correct || false;
-      submitAnswer(selectedOption?.label || '', isCorrect);
+      submitAnswer(selectedOption?.label || '', isCorrect, confidence ?? undefined);
       setShowExplanation(true);
       progressAnim.stopAnimation();
     } else {
-      const isCorrect = q.answer 
-        ? answer.trim().toLowerCase() === q.answer.toLowerCase() 
+      const isCorrect = q.answer
+        ? answer.trim().toLowerCase() === q.answer.toLowerCase()
         : true;
-      
-      submitAnswer(answer, isCorrect);
-      setApiFeedback({ 
-        explanation: q.explanation || 'Answer recorded.', 
-        is_correct: isCorrect 
+
+      submitAnswer(answer, isCorrect, confidence ?? undefined);
+
+      if (q.format === 'short_answer' && activeSessionId) {
+        setSocraticLoading(true);
+        socraticFollowUp(activeSessionId, q.id, answer)
+          .then((res) => {
+            setSocratic(res);
+            setSocraticDone(false);
+          })
+          .catch((err) => {
+            console.error("Failed to generate Socratic follow-up:", err);
+            setApiFeedback({
+              explanation: q.explanation || 'Answer recorded.',
+              is_correct: isCorrect
+            });
+            setSocratic(null);
+            setShowExplanation(true);
+          })
+          .finally(() => setSocraticLoading(false));
+        return;
+      }
+
+      setApiFeedback({
+        explanation: q.explanation || 'Answer recorded.',
+        is_correct: isCorrect
       });
       setShowExplanation(true);
       progressAnim.stopAnimation();
@@ -172,6 +204,7 @@ export default function SessionScreen() {
 
   const handleDiagnosticFinish = async () => {
     setSubmitting(true);
+    setDiagnosticError(null);
     const userAnswers = useSessionStore.getState().userAnswers;
     try {
       await evaluateTopicAssessment({
@@ -182,7 +215,7 @@ export default function SessionScreen() {
       router.replace('/');
     } catch (e) {
       console.error("Failed to evaluate diagnostic assessment:", e);
-      router.replace('/');
+      setDiagnosticError("Evaluation failed. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -195,20 +228,17 @@ export default function SessionScreen() {
   }, [isCompleted, id]);
 
   const handleFinishActions = async () => {
-    const sid = useSessionStore.getState().activeSessionId;
-    const userAnswers = useSessionStore.getState().userAnswers;
-    if (!sid) return;
+    const { activeSessionId, userAnswers, questions, score, completeSession: completeLocalSession } = useSessionStore.getState();
+    if (!activeSessionId) return;
 
     try {
-      // 1. Always complete the session
       const diagData = !lessonId ? {
         topic_id: id as string,
         answers: userAnswers
       } : undefined;
-      
-      await completeSession(sid, diagData);
 
-      // 2. If it's a lesson-based session, trigger progress as a separate call
+      await completeSession(activeSessionId, diagData);
+
       if (lessonId) {
         const progressRes = await updateProgress(lessonId as string);
         setLessons(progressRes.updatedLessons);
@@ -220,35 +250,102 @@ export default function SessionScreen() {
 
     const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
     updateTopicProgress(id as string, pct, 1);
+    
+    completeLocalSession();
   };
+
+  // Find next lesson after current one
+  const getNextLessonId = useCallback((): string | undefined => {
+    if (!lessonId) return undefined;
+    const allLessons = Object.values(lessons);
+    const currentLesson = allLessons.find(l => l.id === lessonId);
+    if (!currentLesson) return undefined;
+    
+    // Get all lessons in the same module, sorted by index
+    const moduleLessons = allLessons
+      .filter(l => l.nodeId === currentLesson.nodeId)
+      .sort((a, b) => a.index - b.index);
+    
+    const currentIndex = moduleLessons.findIndex(l => l.id === lessonId);
+    if (currentIndex >= 0 && currentIndex < moduleLessons.length - 1) {
+      return moduleLessons[currentIndex + 1].id;
+    }
+    
+    // No next lesson in current module, find first lesson of next module
+    // Get all modules for this topic, sorted by index
+    const modules = Object.values(lessons)
+      .filter(l => l.nodeId)
+      .reduce((acc, l) => {
+        if (!acc[l.nodeId]) acc[l.nodeId] = { index: l.index, lessons: [] };
+        acc[l.nodeId].lessons.push(l);
+        return acc;
+      }, {} as Record<string, { index: number; lessons: Lesson[] }>);
+    
+    const sortedModules = Object.entries(modules)
+      .sort((a, b) => a[1].index - b[1].index);
+    
+    const currentModuleIndex = sortedModules.findIndex(([nodeId]) => nodeId === currentLesson.nodeId);
+    if (currentModuleIndex >= 0 && currentModuleIndex < sortedModules.length - 1) {
+      const nextModule = sortedModules[currentModuleIndex + 1][1];
+      const firstLesson = nextModule.lessons.sort((a, b) => a.index - b.index)[0];
+      return firstLesson?.id;
+    }
+    
+    return undefined;
+  }, [lessonId, lessons]);
 
   const handleDashboard = () => {
     void (async () => {
       await handleFinishActions();
-      router.back();
+      router.replace({
+        pathname: `/topics/${id}` as any,
+      });
     })();
   };
 
   const handleNextSession = () => {
     void (async () => {
       await handleFinishActions();
-      const targetQuizMode = typeof quizMode === 'string' ? quizMode : undefined;
+      const nextLessonId = getNextLessonId();
       resetSession();
-      router.replace({
-        pathname: `/topics/${id}/session` as any,
-        params: { quizMode: targetQuizMode }
-      });
+      if (nextLessonId) {
+        router.replace({
+          pathname: `/topics/${id}/${nextLessonId}` as any,
+        });
+      } else {
+        // No next lesson, go to topic index
+        router.replace({
+          pathname: `/topics/${id}` as any,
+        });
+      }
     })();
   };
 
-  if (loading) return <View style={[styles.container, styles.centered]}><ActivityIndicator size="large" color="#F97316" /></View>;
+  if (loading) return <View style={[styles.container, styles.centered]}><ActivityIndicator size="large" color={tokens.colors.accent} /></View>;
 
   if (isCompleted) {
     if (id === 'diagnostic') {
+      if (diagnosticError) {
+        return (
+          <View style={[styles.container, styles.centered]}>
+            <Text style={{ color: tokens.colors.textPrimary, fontSize: 16, marginBottom: 8 }}>Something went wrong</Text>
+            <Text style={{ color: tokens.colors.textSecondary, marginBottom: 24 }}>{diagnosticError}</Text>
+            <TouchableOpacity
+              onPress={handleDiagnosticFinish}
+              style={{ backgroundColor: tokens.colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.replace('/')} style={{ marginTop: 16 }}>
+              <Text style={{ color: tokens.colors.textSecondary }}>Go Home</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
       return (
         <View style={[styles.container, styles.centered]}>
-          <ActivityIndicator size="large" color="#F97316" />
-          <Text style={{ color: '#FFF', marginTop: 16 }}>Evaluating your level...</Text>
+          <ActivityIndicator size="large" color={tokens.colors.accent} />
+          <Text style={{ color: tokens.colors.textPrimary, marginTop: 16 }}>Evaluating your level...</Text>
         </View>
       );
     }
@@ -256,10 +353,17 @@ export default function SessionScreen() {
     return (
       <SessionComplete
         topicTitle={topic?.title || 'Session'}
+        topicId={id as string}
         score={score}
         total={questions.length}
         onContinue={handleNextSession}
         onDashboard={handleDashboard}
+        onReviewNow={() => router.replace(`/review?topicId=${id}` as any)}
+        showReviewQueue={true}
+        userAnswers={useSessionStore.getState().userAnswers}
+        hasLesson={!!lessonId}
+        lessonId={lessonId as string | undefined}
+        nextLessonId={getNextLessonId()}
       />
     );
   }
@@ -274,14 +378,13 @@ export default function SessionScreen() {
   const isMcq = q.format === 'mcq' || q.format === 'true_false';
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity style={styles.exitBtn} onPress={() => router.back()}>
-          <Feather name="x" size={16} color="#94A3B8" />
+          <X size={16} color={tokens.colors.textSecondary} />
           <Text style={styles.exitText}>Exit</Text>
         </TouchableOpacity>
 
@@ -295,7 +398,6 @@ export default function SessionScreen() {
         </View>
       </View>
 
-      {/* Timer Bar */}
       <View style={styles.timerTrack}>
         <Animated.View style={[styles.timerFill, {
           width: progressAnim.interpolate({
@@ -305,20 +407,13 @@ export default function SessionScreen() {
         }]} />
       </View>
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={[styles.contentLine, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.questionCard}>
           <View style={styles.qHeaderRow}>
             <Text style={styles.qHeader}>Question {qNum}</Text>
-            <TouchableOpacity onPress={handleSpeakQuestion} style={styles.speakSmallBtn}>
-              <MaterialCommunityIcons 
-                name={isSpeaking ? "volume-high" : "volume-medium"} 
-                size={20} 
-                color={isSpeaking ? "#F97316" : "#94A3B8"} 
-              />
-            </TouchableOpacity>
           </View>
           <Text style={styles.qText}>{q.question}</Text>
         </View>
@@ -335,24 +430,24 @@ export default function SessionScreen() {
               let optTextStyle: any[] = [styles.optText];
 
               if (showExplanation) {
-                 if (isCorrectAnswer) {
-                   containerStyle.push(styles.optCardCorrect);
-                   letterBoxStyle.push(styles.optLetterBoxCorrect);
-                   letterTextStyle.push(styles.optLetterTextCorrect);
-                   optTextStyle.push(styles.optTextCorrect);
-                 } else if (isSelected) {
-                   containerStyle.push(styles.optCardWrong);
-                   letterBoxStyle.push(styles.optLetterBoxWrong);
-                   letterTextStyle.push(styles.optLetterTextWrong);
-                   optTextStyle.push(styles.optTextWrong);
-                 } else { 
-                   containerStyle.push({ opacity: 0.5 });
-                 }
+                if (isCorrectAnswer) {
+                  containerStyle.push(styles.optCardCorrect);
+                  letterBoxStyle.push(styles.optLetterBoxCorrect);
+                  letterTextStyle.push(styles.optLetterTextCorrect);
+                  optTextStyle.push(styles.optTextCorrect);
+                } else if (isSelected) {
+                  containerStyle.push(styles.optCardWrong);
+                  letterBoxStyle.push(styles.optLetterBoxWrong);
+                  letterTextStyle.push(styles.optLetterTextWrong);
+                  optTextStyle.push(styles.optTextWrong);
+                } else {
+                  containerStyle.push({ opacity: 0.5 });
+                }
               } else if (isSelected) {
-                 containerStyle.push(styles.optCardActive);
-                 letterBoxStyle.push(styles.optLetterBoxActive);
-                 letterTextStyle.push(styles.optLetterTextActive);
-                 optTextStyle.push(styles.optTextActive);
+                containerStyle.push(styles.optCardActive);
+                letterBoxStyle.push(styles.optLetterBoxActive);
+                letterTextStyle.push(styles.optLetterTextActive);
+                optTextStyle.push(styles.optTextActive);
               }
 
               return (
@@ -361,7 +456,7 @@ export default function SessionScreen() {
                   style={containerStyle}
                   activeOpacity={0.8}
                   onPress={() => {
-                     if (!showExplanation) setSelectedOption(opt);
+                    if (!showExplanation) setSelectedOption(opt);
                   }}
                 >
                   <View style={letterBoxStyle}>
@@ -376,8 +471,36 @@ export default function SessionScreen() {
                     ) : null}
                   </View>
                 </TouchableOpacity>
-              )
+              );
             })}
+          </View>
+        ) : socraticLoading || (socratic && !socraticDone) ? (
+          <View style={styles.socraticCard}>
+            <View style={styles.socraticTopRow}>
+              <View style={styles.socraticBadge}>
+                <MessageCircle size={12} color={tokens.colors.accent} />
+                <Text style={styles.socraticBadgeText}>SOCRATIC FOLLOW-UP</Text>
+              </View>
+            </View>
+            {socraticLoading && !socratic ? (
+              <View style={styles.socraticLoadingRow}>
+                <ActivityIndicator size="small" color={tokens.colors.accent} />
+                <Text style={styles.socraticLoadingText}>Generating a &quot;why&quot; question...</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.socraticPrompt}>{socratic?.follow_up}</Text>
+                <Text style={styles.socraticInputLabel}>YOUR FOLLOW-UP ANSWER</Text>
+                <TextInput
+                  style={styles.socraticInput}
+                  placeholder="Explain your reasoning..."
+                  placeholderTextColor={tokens.colors.textTertiary}
+                  multiline
+                  value={socraticAnswer}
+                  onChangeText={setSocraticAnswer}
+                />
+              </>
+            )}
           </View>
         ) : (
           !showExplanation ? (
@@ -387,49 +510,70 @@ export default function SessionScreen() {
                 <TextInput
                   style={styles.textInput}
                   placeholder="Type your detailed answer here..."
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={tokens.colors.textTertiary}
                   multiline
                   value={answer}
                   onChangeText={setAnswer}
                 />
-                <View style={styles.micActionRow}>
-                  {isListening && <Text style={styles.listeningText}>Listening...</Text>}
-                  <Animated.View style={[styles.micPulseWrap, { transform: [{ scale: pulseAnim }] }]}>
-                    <TouchableOpacity 
-                      style={[styles.smallMicBtn, isListening && styles.smallMicBtnActive]}
-                      onPress={handleSpeechInput}
-                    >
-                      <Feather name={isListening ? "mic" : "mic-off"} size={20} color={isListening ? "#FFF" : "#94A3B8"} />
-                    </TouchableOpacity>
-                  </Animated.View>
-                </View>
               </View>
             </View>
           ) : (
             <View style={styles.explainAreaText}>
-               <Text style={styles.explainTitleText}>
-                 {apiFeedback?.is_correct === false ? 'Keep practicing' : 'Answer recorded'}
-               </Text>
-               <Text style={styles.explainLabel}>KEY CONCEPTS TO KNOW:</Text>
-               <Text style={styles.explainContentText}>{apiFeedback?.explanation ?? q.explanation}</Text>
+              <Text style={styles.explainTitleText}>
+                {socraticDone
+                  ? (socratic?.feedback === 'correct' ? 'Nice reasoning' : socratic?.feedback === 'partial' ? 'Close — let\'s sharpen it' : 'Good effort')
+                  : (apiFeedback?.is_correct === false ? 'Keep practicing' : 'Answer recorded')}
+              </Text>
+              <Text style={styles.explainLabel}>KEY CONCEPTS TO KNOW:</Text>
+              <Text style={styles.explainContentText}>
+                {socraticDone ? socratic?.explanation : (apiFeedback?.explanation ?? q.explanation)}
+              </Text>
             </View>
           )
         )}
       </ScrollView>
 
-      {/* Bottom Button */}
+      {!showExplanation && !socratic && !socraticLoading ? (
+        <View style={[styles.confidenceBar, { bottom: Math.max(insets.bottom, 108) }]}>
+          <Text style={styles.confidenceLabel}>HOW CONFIDENT ARE YOU?</Text>
+          <View style={styles.confidenceRow}>
+            {([
+              ['low', 'Low'],
+              ['med', 'Medium'],
+              ['high', 'High'],
+            ] as [Confidence, string][]).map(([val, label]) => {
+              const active = confidence === val;
+              return (
+                <TouchableOpacity
+                  key={val}
+                  style={[styles.confidenceBtn, active && styles.confidenceBtnActive]}
+                  onPress={() => setConfidence(val)}
+                >
+                  <Text style={[styles.confidenceBtnText, active && styles.confidenceBtnTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
       <View style={[styles.bottomContainer, { bottom: Math.max(insets.bottom, 24) }]}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
-            styles.submitBtn, 
-            (((isMcq && !selectedOption) || (!isMcq && !answer.trim())) && !showExplanation) || submitting 
+            styles.submitBtn,
+            (((isMcq && !selectedOption) || (!isMcq && !answer.trim())) && !showExplanation && !(socratic && !socraticDone)) || submitting
+            || (socraticLoading && !socratic) || (socratic && !socraticDone && !socraticAnswer.trim())
             ? { opacity: 0.5 } : undefined
-          ]} 
+          ]}
           activeOpacity={0.8}
           onPress={handleSubmit}
-          disabled={((isMcq && !selectedOption) || (!isMcq && !answer.trim())) && !showExplanation || submitting}
+          disabled={!!((
+            ((isMcq && !selectedOption) || (!isMcq && !answer.trim())) && !showExplanation && !(socratic && !socraticDone)
+          ) || submitting || (socraticLoading && !socratic) || (socratic && !socraticDone && !socraticAnswer.trim()))}
         >
-          <Text style={styles.submitBtnText}>{showExplanation ? 'Continue' : submitting ? 'Submitting...' : 'Submit'}</Text>
+          <Text style={styles.submitBtnText}>
+            {socraticLoading && !socratic ? 'Thinking...' : (socratic && !socraticDone ? 'Reveal explanation' : showExplanation ? 'Continue' : submitting ? 'Submitting...' : 'Submit')}
+          </Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -439,7 +583,7 @@ export default function SessionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#020617', // slate-950
+    backgroundColor: tokens.colors.base,
   },
   centered: {
     justifyContent: 'center',
@@ -459,56 +603,54 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   exitText: {
-    color: '#94A3B8',
-    fontSize: 14,
-    fontWeight: '800', 
+    color: tokens.colors.textSecondary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
     textTransform: 'uppercase',
   },
   pillBox: {
-    backgroundColor: '#1E293B',
+    backgroundColor: tokens.colors.surface,
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 999,
+    borderRadius: tokens.radius.full,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: tokens.colors.border,
   },
   pillText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '800',
+    color: tokens.colors.textPrimary,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
     textTransform: 'uppercase',
-    letterSpacing: 2,
+    letterSpacing: 1,
   },
   headerRight: {
     alignItems: 'flex-end',
   },
   progressFractions: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
+    fontSize: tokens.fontSize.base,
+    fontFamily: tokens.fontFamily.display,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   progressPercent: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#64748B',
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: -0.5,
   },
   timerTrack: {
     width: '100%',
-    height: 6,
-    backgroundColor: '#1E293B',
+    height: 4,
+    backgroundColor: tokens.colors.base,
     zIndex: 9,
   },
   timerFill: {
     height: '100%',
-    backgroundColor: '#F97316',
-    shadowColor: '#F97316',
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 12,
-    elevation: 4,
+    backgroundColor: tokens.colors.accent,
   },
   contentLine: {
     padding: 24,
@@ -516,14 +658,11 @@ const styles = StyleSheet.create({
     gap: 24,
   },
   questionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 40,
-    padding: 32,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 24,
-    elevation: 10,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius['3xl'],
+    padding: 28,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
   },
   qHeaderRow: {
     flexDirection: 'row',
@@ -532,76 +671,71 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   qHeader: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#94A3B8',
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 2,
-  },
-  speakSmallBtn: {
-    width: 32,
-    height: 32,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    letterSpacing: 1,
   },
   qText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontSize: tokens.fontSize.xl,
+    fontFamily: tokens.fontFamily.display,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
     lineHeight: 28,
   },
   optionsList: {
-    gap: 16,
+    gap: 12,
   },
   optCard: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: tokens.colors.surface,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
-    padding: 20,
-    borderRadius: 24,
+    borderColor: tokens.colors.border,
+    padding: 18,
+    borderRadius: tokens.radius['2xl'],
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
   },
   optCardActive: {
-    backgroundColor: '#FFF7ED', // orange-50
-    borderColor: '#F97316',
-    borderWidth: 1,
+    backgroundColor: 'rgba(0, 113, 227, 0.06)',
+    borderColor: tokens.colors.accent,
+    borderWidth: 1.5,
   },
   optCardCorrect: {
-    backgroundColor: '#F0FDF4', // green-50
-    borderColor: '#22C55E', // green-500
-    borderWidth: 1,
+    backgroundColor: 'rgba(34, 197, 94, 0.06)',
+    borderColor: '#22c55e',
+    borderWidth: 1.5,
   },
   optCardWrong: {
-    backgroundColor: '#FEF2F2', // red-50
-    borderColor: '#EF4444', // red-500
-    borderWidth: 1,
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
+    borderColor: '#ef4444',
+    borderWidth: 1.5,
   },
   optLetterBox: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: tokens.colors.base,
     alignItems: 'center',
     justifyContent: 'center',
   },
   optLetterBoxActive: {
-    backgroundColor: '#F97316',
+    backgroundColor: tokens.colors.accent,
   },
   optLetterBoxCorrect: {
-    backgroundColor: '#22C55E',
+    backgroundColor: '#22c55e',
   },
   optLetterBoxWrong: {
-    backgroundColor: '#EF4444',
+    backgroundColor: '#ef4444',
   },
   optLetterText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#94A3B8',
+    fontSize: tokens.fontSize.base,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textSecondary,
   },
   optLetterTextActive: {
     color: '#FFFFFF',
@@ -613,26 +747,29 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   optText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#334155', // slate-700
+    fontSize: tokens.fontSize.lg,
+    fontFamily: tokens.fontFamily.body,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.colors.textPrimary,
     flex: 1,
   },
   optTextActive: {
-    fontWeight: '800',
-    color: '#0F172A',
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
   },
   optTextCorrect: {
-    fontWeight: '800',
-    color: '#14532D', // green-900
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: '#14532d',
   },
   optTextWrong: {
-    fontWeight: '800',
-    color: '#7F1D1D', // red-900
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: '#7f1d1d',
   },
   optExplanationText: {
-    fontSize: 13,
-    color: '#64748B', // slate-500
+    fontSize: tokens.fontSize.sm,
+    color: tokens.colors.textSecondary,
     fontStyle: 'italic',
     marginTop: 6,
     lineHeight: 18,
@@ -643,102 +780,190 @@ const styles = StyleSheet.create({
     right: 24,
     zIndex: 40,
   },
+  confidenceBar: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    zIndex: 30,
+    backgroundColor: tokens.colors.surface,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    borderRadius: tokens.radius.lg,
+    padding: 14,
+    gap: 10,
+  },
+  confidenceLabel: {
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textSecondary,
+    letterSpacing: 1,
+  },
+  confidenceRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  confidenceBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.base,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+    alignItems: 'center',
+  },
+  confidenceBtnActive: {
+    backgroundColor: tokens.colors.accent,
+    borderColor: tokens.colors.accent,
+  },
+  confidenceBtnText: {
+    color: tokens.colors.textSecondary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+  },
+  confidenceBtnTextActive: {
+    color: '#FFFFFF',
+  },
   submitBtn: {
     width: '100%',
-    backgroundColor: '#F97316', // orange-500
-    paddingVertical: 20,
-    borderRadius: 100,
+    backgroundColor: tokens.colors.accent,
+    paddingVertical: 18,
+    borderRadius: tokens.radius.full,
     alignItems: 'center',
-    shadowColor: '#F97316',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 16,
-    elevation: 8,
+    // @ts-ignore
+    boxShadow: '0 4px 12px rgba(0, 113, 227, 0.25)',
   },
   submitBtnText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: tokens.fontSize.lg,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
   },
   inputSection: {
     gap: 12,
   },
   inputLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: '#64748B',
-    letterSpacing: 2,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textSecondary,
+    letterSpacing: 1,
     marginLeft: 12,
   },
   inputWrapper: {
-    backgroundColor: '#1E293B',
-    borderRadius: 24,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius['2xl'],
     padding: 20,
     minHeight: 180,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: tokens.colors.border,
     justifyContent: 'space-between',
   },
   textInput: {
-    fontSize: 16,
-    color: '#FFFFFF',
+    fontSize: tokens.fontSize.lg,
+    fontFamily: tokens.fontFamily.body,
+    color: tokens.colors.textPrimary,
     lineHeight: 24,
     textAlignVertical: 'top',
     flex: 1,
     marginBottom: 16,
   },
-  micActionRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: 16,
-  },
-  listeningText: {
-    color: '#F97316',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  micPulseWrap: {
-    borderRadius: 999,
-  },
-  smallMicBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#0F172A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  smallMicBtnActive: {
-    backgroundColor: '#F97316',
-    borderColor: '#F97316',
-  },
   explainAreaText: {
     marginTop: 8,
     padding: 24,
-    backgroundColor: '#1E293B',
-    borderRadius: 32,
-    borderLeftWidth: 4,
-    borderColor: '#3B82F6',
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius['2xl'],
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
   },
   explainTitleText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '800',
+    color: tokens.colors.textPrimary,
+    fontSize: tokens.fontSize.xl,
+    fontFamily: tokens.fontFamily.display,
+    fontWeight: tokens.fontWeight.bold,
     marginBottom: 16,
   },
   explainLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: '#3B82F6',
-    letterSpacing: 2,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.accent,
+    letterSpacing: 1,
     marginBottom: 8,
   },
   explainContentText: {
-    color: '#CBD5E1',
-    fontSize: 14,
+    color: tokens.colors.textPrimary,
+    fontSize: tokens.fontSize.base,
+    fontFamily: tokens.fontFamily.body,
     lineHeight: 22,
+  },
+  socraticCard: {
+    marginTop: 8,
+    padding: 24,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius['2xl'],
+    borderWidth: 1,
+    borderColor: 'rgba(0, 113, 227, 0.2)',
+    gap: 14,
+  },
+  socraticTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  socraticBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 113, 227, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.full,
+  },
+  socraticBadgeText: {
+    color: tokens.colors.accent,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    letterSpacing: 0.5,
+  },
+  socraticLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  socraticLoadingText: {
+    color: tokens.colors.textSecondary,
+    fontSize: tokens.fontSize.base,
+    fontFamily: tokens.fontFamily.bodyMedium,
+    fontWeight: tokens.fontWeight.semibold,
+  },
+  socraticPrompt: {
+    color: tokens.colors.textPrimary,
+    fontSize: tokens.fontSize.xl,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    lineHeight: 26,
+  },
+  socraticInputLabel: {
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textSecondary,
+    letterSpacing: 1,
+  },
+  socraticInput: {
+    backgroundColor: tokens.colors.base,
+    borderRadius: tokens.radius.lg,
+    padding: 16,
+    fontSize: tokens.fontSize.md,
+    fontFamily: tokens.fontFamily.body,
+    color: tokens.colors.textPrimary,
+    lineHeight: 22,
+    textAlignVertical: 'top',
+    minHeight: 96,
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
   }
 });

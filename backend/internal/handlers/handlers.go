@@ -9,13 +9,13 @@ import (
 )
 
 type ModuleService interface {
-	UpdateStatus(ctx context.Context, moduleID string, status string) (*models.Module, error)
+	UpdateStatus(ctx context.Context, moduleID string, status string, userID string) (*models.Module, error)
 	GetByID(ctx context.Context, moduleID string) (*models.Module, error)
 	UpdateByTopicID(ctx context.Context, topicID string, index int, status string) (*models.Module, error)
 }
 
 type LessonService interface {
-	Progress(ctx context.Context, lessonID string) (*models.ProgressUpdate, error)
+	Progress(ctx context.Context, lessonID string, userID string) (*models.ProgressUpdate, error)
 }
 
 type AuthService interface {
@@ -23,6 +23,7 @@ type AuthService interface {
 	Login(ctx context.Context, email, password string) (string, string, error)
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	GetMe(ctx context.Context, userID string) (models.User, error)
+	UpdateOnboarding(ctx context.Context, userID string, goal *string, dailyCommitment *int, onboardingCompleted bool) error
 	ForgotPassword(ctx context.Context, email string) error
 }
 
@@ -35,9 +36,10 @@ type TopicService interface {
 }
 
 type SessionService interface {
-	StartSession(ctx context.Context, topicID uuid.UUID, lessonID *uuid.UUID, userID uuid.UUID, quizMode string) (uuid.UUID, []models.Question, error)
+	StartSession(ctx context.Context, topicID uuid.UUID, lessonID *uuid.UUID, userID uuid.UUID, quizMode string, interleave bool) (uuid.UUID, []models.Question, error)
 	CompleteSession(ctx context.Context, sessionID string, answers string, topicID string, userID string) error
-	GetUserActivity(ctx context.Context, userID uuid.UUID) ([]UserActivityData, error)
+	GetUserActivity(ctx context.Context, userID uuid.UUID) ([]models.UserActivityData, error)
+	SocraticFollowUp(ctx context.Context, sessionID, questionID, answer, userID string) (models.SocraticFollowUp, error)
 }
 
 type AIService interface {
@@ -45,14 +47,15 @@ type AIService interface {
 }
 
 type APIHandler struct {
-	AI AIService
+	AI      AIService
 	Auth    AuthService
 	Topic   TopicService
 	Session SessionService
 	Module  ModuleService
 	Lesson  LessonService
+	Review  ReviewService
 }
 
-func NewAPIHandler(aiGen AIService, auth AuthService, topic TopicService, module ModuleService, lesson LessonService, session SessionService) *APIHandler {
-	return &APIHandler{AI:aiGen, Auth: auth, Topic: topic, Session: session, Module: module, Lesson: lesson}
+func NewAPIHandler(aiGen AIService, auth AuthService, topic TopicService, module ModuleService, lesson LessonService, session SessionService, review ReviewService) *APIHandler {
+	return &APIHandler{AI: aiGen, Auth: auth, Topic: topic, Session: session, Module: module, Lesson: lesson, Review: review}
 }

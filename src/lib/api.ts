@@ -8,7 +8,7 @@ import { API_BASE_URL } from './config';
 /** Returns true if the error was caused by an AbortController.abort() call. */
 export function isAbortError(error: unknown): boolean {
   if (axios.isCancel(error)) return true;
-  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  if (error && typeof error === 'object' && 'name' in error && (error as any).name === 'AbortError') return true;
   return false;
 }
 
@@ -18,6 +18,9 @@ export type ApiUser = {
   currentStreak: number;
   longestStreak: number;
   lastSessionDate?: string | null;
+  goal?: string | null;
+  dailyCommitment?: number | null;
+  onboardingCompleted?: boolean;
   createdAt?: string;
 };
 
@@ -36,6 +39,13 @@ export type QuizActivity = {
 export type UserAnswer = {
   question: Question;
   answer: string;
+  confidence?: 'low' | 'med' | 'high';
+};
+
+export type ApiSocraticFollowUp = {
+  follow_up: string;
+  feedback: 'correct' | 'partial' | 'wrong';
+  explanation: string;
 };
 
 export type UserActivityData = {
@@ -55,16 +65,10 @@ export type ApiTopic = {
   id: string;
   userId: string;
   title: string;
-  domain: string;
-  familiarityLevel: string;
-  currentTier: number;
+  tier: number;
+  status: string;
+  remark: string | null;
   createdAt: string;
-};
-
-export type SubmitAnswerResponse = {
-  is_correct: boolean;
-  correct_answer: string;
-  explanation: string;
 };
 
 export type ProgressUpdateResponse = {
@@ -122,7 +126,7 @@ apiClient.interceptors.request.use((config) => {
 
 // Track whether a token refresh is already in flight to avoid loops.
 let isRefreshing = false;
-let refreshSubscribers: Array<(token: string) => void> = [];
+let refreshSubscribers: ((token: string) => void)[] = [];
 
 function subscribeToRefresh(cb: (token: string) => void) {
   refreshSubscribers.push(cb);
@@ -170,7 +174,7 @@ apiClient.interceptors.response.use(
 
     try {
       const { data } = await axios.post<{ success: boolean; data: { token: string; refresh_token: string } }>(
-        `${API_BASE_URL}/auth/refresh`,
+        `${API_BASE_URL}/api/v1/auth/refresh`,
         { refresh_token: refreshToken },
         { headers: { 'Content-Type': 'application/json' } }
       );
@@ -240,6 +244,15 @@ export async function getMe(signal?: AbortSignal): Promise<ApiUser> {
   return data.data;
 }
 
+export async function updateMe(body: {
+  goal?: string;
+  daily_commitment?: number;
+  onboarding_completed?: boolean;
+}, signal?: AbortSignal): Promise<ApiUser> {
+  const { data } = await apiClient.patch<{ success: boolean; data: ApiUser }>('/users/me', body, { signal });
+  return data.data;
+}
+
 export async function getActivity(signal?: AbortSignal): Promise<UserActivityInfo> {
   const { data } = await apiClient.get<{ success: boolean; data: UserActivityInfo }>('/sessions/activity', { signal });
   return data.data;
@@ -279,7 +292,7 @@ export async function getRoadmap(topicId: string, signal?: AbortSignal): Promise
 }
 
 export async function startSession(
-  params: { topic_id: string; lesson_id?: string; quiz_mode?: string },
+  params: { topic_id: string; lesson_id?: string; quiz_mode?: string; interleave?: boolean },
   signal?: AbortSignal
 ): Promise<{ session_id: string; questions: Question[] }> {
   const { data } = await apiClient.post<{ success: boolean; data: { session_id: string; questions: ApiQuestionRaw[] } }>(
@@ -293,25 +306,26 @@ export async function startSession(
   };
 }
 
-export async function submitAnswer(
-  sessionId: string,
-  payload: { question_id: string; selected_answer: string },
-  signal?: AbortSignal
-): Promise<SubmitAnswerResponse> {
-  const { data } = await apiClient.post<{ success: boolean; data: SubmitAnswerResponse }>(
-    `/sessions/${sessionId}/answer`,
-    payload,
-    { signal }
-  );
-  return data.data;
-}
-
 export async function completeSession(
   sessionId: string, 
-  diagData?: { topic_id: string; answers: { question: Question; answer: string }[] },
+  diagData?: { topic_id: string; answers: UserAnswer[] },
   signal?: AbortSignal
 ): Promise<void> {
   await apiClient.post(`/sessions/${sessionId}/complete`, diagData, { signal });
+}
+
+export async function socraticFollowUp(
+  sessionId: string,
+  questionId: string,
+  answer: string,
+  signal?: AbortSignal
+): Promise<ApiSocraticFollowUp> {
+  const { data } = await apiClient.post<{ success: boolean; data: ApiSocraticFollowUp }>(
+    `/sessions/${sessionId}/socratic`,
+    { question_id: questionId, answer },
+    { signal }
+  );
+  return data.data;
 }
 
 export async function updateModuleStatus(moduleId: string, status: string, signal?: AbortSignal): Promise<void> {
@@ -349,6 +363,122 @@ export async function evaluateTopicAssessment(
     '/topics/assessment/evaluate',
     params,
     { signal }
+  );
+  return data.data;
+}
+
+// ---- Spaced-repetition review cards ----
+
+export type ApiReviewCard = {
+  id: string;
+  userId: string;
+  topicId: string;
+  lessonId?: string | null;
+  sourceQuestionId?: string | null;
+  prompt: string;
+  answer: string;
+  concept_tags: string[];
+  easeFactor: number;
+  intervalDays: number;
+  repetitions: number;
+  lapses: number;
+  dueAt: string;
+  lastReviewedAt?: string | null;
+  createdAt: string;
+};
+
+const asReviewCards = (d: unknown): ApiReviewCard[] => {
+  if (!Array.isArray(d)) return [];
+  return d as ApiReviewCard[];
+};
+
+export async function generateReviewCards(
+  topicId: string,
+  signal?: AbortSignal
+): Promise<{ generated: number }> {
+  const { data } = await apiClient.post<{ success: boolean; data: { generated: number } }>(
+    `/topics/${topicId}/review-cards/generate`,
+    undefined,
+    { signal }
+  );
+  return data.data;
+}
+
+export async function getDueReviews(
+  params: { topic_id?: string; limit?: number } = {},
+  signal?: AbortSignal
+): Promise<ApiReviewCard[]> {
+  const { data } = await apiClient.get<{ success: boolean; data: ApiReviewCard[] }>('/reviews/due', {
+    params,
+    signal,
+  });
+  return asReviewCards(data.data);
+}
+
+export async function getReviewDueCount(signal?: AbortSignal): Promise<number> {
+  const { data } = await apiClient.get<{ success: boolean; data: { due_count: number } }>(
+    '/reviews/due/count',
+    { signal }
+  );
+  return data.data?.due_count ?? 0;
+}
+
+export async function rateReviewCard(
+  cardId: string,
+  quality: number,
+  signal?: AbortSignal
+): Promise<ApiReviewCard> {
+  const { data } = await apiClient.post<{ success: boolean; data: { card: ApiReviewCard } }>(
+    `/reviews/${cardId}/rate`,
+    { quality },
+    { signal }
+  );
+  return data.data.card;
+}
+
+export type RetentionBucket = {
+  days: number;
+  pct_correct: number;
+};
+
+export type WeakConcept = {
+  concept: string;
+  topic_name: string;
+  pct_correct: number;
+  sample_size: number;
+};
+
+export type ReviewStats = {
+  retention_by_interval: RetentionBucket[];
+  weak_concepts: WeakConcept[];
+  total_cards: number;
+  due_today: number;
+};
+
+export type RetentionPoint = {
+  date: string;
+  pct_correct: number;
+  reviews: number;
+};
+
+export type TopicRetentionSeries = {
+  topic_id: string;
+  topic_title: string;
+  points: RetentionPoint[];
+};
+
+export async function getReviewStats(signal?: AbortSignal): Promise<ReviewStats> {
+  const { data } = await apiClient.get<{ success: boolean; data: ReviewStats }>(
+    '/reviews/stats',
+    { signal }
+  );
+  return data.data;
+}
+
+export async function getRetentionByTopic(days: number = 7, signal?: AbortSignal): Promise<TopicRetentionSeries[]> {
+  const { data } = await apiClient.get<{ success: boolean; data: TopicRetentionSeries[] }>(
+    '/reviews/retention',
+    { params: { days }, signal }
   );
   return data.data;
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/acerowl/lockin/backend/internal/models"
@@ -17,6 +18,8 @@ type LLMProvider interface {
 	GenerateTopicQuestions(ctx context.Context, prompt string) (string, error)
 	EvaluateTopicSession(ctx context.Context, prompt string) (string, error)
 	GenerateAssessmentQuestions(ctx context.Context, prompt string) (string, error)
+	GenerateReviewCards(ctx context.Context, prompt string) (string, error)
+	GenerateSocraticFollowUp(ctx context.Context, prompt string) (string, error)
 }
 
 type Generator struct {
@@ -73,16 +76,44 @@ type TopicQuestionAI struct {
 	Index       int               `json:"index"`
 	Type        string            `json:"type"`
 	Question    string            `json:"question"`
+	ConceptTags []string          `json:"concept_tags,omitempty"`
 	Options     []RoadmapOptionAI `json:"options"`
 }
 
 type TopicEvaluationAIResponse struct {
-	NewTier   int    `json:"new_tier"`
-	NewRemark string `json:"new_remark"`
+	NewTier          int    `json:"new_tier"`
+	NewRemark        string `json:"new_remark"`
+	RecommendedFocus string `json:"recommended_focus,omitempty"`
 }
 
-func (g *Generator) GenerateRoadmap(ctx context.Context, topicID string, topic string, proficiency string) error {
-	prompt := g.buidlRoadmapPrompt(topic, proficiency)
+// ReviewCardAI is a single generative flashcard returned by the LLM.
+type ReviewCardAI struct {
+	Prompt     string `json:"prompt"`
+	Answer     string `json:"answer"`
+	ConceptTag string `json:"concept_tag"`
+}
+
+// ReviewCardsAIResponse is the top-level AI response for review-card generation.
+type ReviewCardsAIResponse struct {
+	Cards []ReviewCardAI `json:"cards"`
+}
+
+// SocraticFollowUpAIResponse is the top-level AI response for a Socratic follow-up.
+type SocraticFollowUpAIResponse struct {
+	FollowUp    string `json:"follow_up"`
+	Feedback    string `json:"feedback"`
+	Explanation string `json:"explanation"`
+}
+
+func (g *Generator) GenerateRoadmap(ctx context.Context, topicID string, topic string, proficiency string, recommendedFocus string) error {
+	goal := ""
+	if err := g.DB.QueryRow(ctx,
+		"SELECT COALESCE(u.goal, '') FROM users u JOIN topics t ON t.user_id = u.id WHERE t.id = $1",
+		topicID,
+	).Scan(&goal); err != nil {
+		log.Println("Warning: could not fetch user goal:", err)
+	}
+	prompt := g.buildRoadmapPrompt(topic, proficiency, goal, recommendedFocus)
 	start := time.Now()
 	log.Println("Generating Roadmap for topic: ", topicID, " Starting at ", start)
 	res, err := g.Provider.GenerateRoadmap(ctx, prompt)
@@ -139,7 +170,7 @@ func (g *Generator) storeRoadmap(ctx context.Context, topicID string, roadmap mo
 		for _, lesson := range module.Lessons {
 			lessonID := uuid.New()
 			status := "locked"
-			if lesson.Index == 1 {
+			if module.Index == 1 && lesson.Index == 1 {
 				status = "in-progress"
 			}
 			_, err := tx.Exec(ctx,
@@ -184,8 +215,8 @@ func (g *Generator) storeRoadmap(ctx context.Context, topicID string, roadmap mo
 	return tx.Commit(ctx)
 }
 
-func (g *Generator) GenerateTopicQuestions(ctx context.Context, topic string, tier int, remark string, quizMode string) ([]models.Question, error) {
-	prompt := g.buildTopicSessionPrompt(topic, tier, remark, quizMode)
+func (g *Generator) GenerateTopicQuestions(ctx context.Context, topic string, tier int, remark string, quizMode string, weakConcepts []string) ([]models.Question, error) {
+	prompt := g.buildTopicSessionPrompt(topic, tier, remark, quizMode, weakConcepts)
 	start := time.Now()
 	log.Println("Generating Topic Questions for topic: ", topic, " Starting at ", start)
 	res, err := g.Provider.GenerateTopicQuestions(ctx, prompt)
@@ -207,6 +238,7 @@ func (g *Generator) GenerateTopicQuestions(ctx context.Context, topic string, ti
 			Index:       q.Index,
 			Type:        models.QuestionType(q.Type),
 			Question:    q.Question,
+			ConceptTags: q.ConceptTags,
 		}
 		for _, opt := range q.Options {
 			questions[i].Options = append(questions[i].Options, models.Option{
@@ -235,14 +267,20 @@ func (g *Generator) EvaluateTopicSession(ctx context.Context, topic string, tier
 		return 0, "", fmt.Errorf("failed to parse evaluation JSON: %w", err)
 	}
 
+	if aiRes.NewTier < 1 {
+		aiRes.NewTier = 1
+	} else if aiRes.NewTier > 10 {
+		aiRes.NewTier = 10
+	}
+
 	return aiRes.NewTier, aiRes.NewRemark, nil
 }
 
-func (g *Generator) GenerateTopicAssessment(ctx context.Context,topic string,proficiency string) (TopicSessionAIResponse, error) {
+func (g *Generator) GenerateTopicAssessment(ctx context.Context, topic string, proficiency string) (TopicSessionAIResponse, error) {
 	start := time.Now()
 	log.Println("Generating Assessment Questions for topic: ", topic, " Starting at ", start)
-	prompt := g.buildAssessmentPrompt(topic,proficiency)
-	res, err := g.Provider.GenerateAssessmentQuestions(ctx,prompt)
+	prompt := g.buildAssessmentPrompt(topic, proficiency)
+	res, err := g.Provider.GenerateAssessmentQuestions(ctx, prompt)
 	if err != nil {
 		log.Println("Error generating assessment questions:", err)
 		return TopicSessionAIResponse{}, err
@@ -256,11 +294,11 @@ func (g *Generator) GenerateTopicAssessment(ctx context.Context,topic string,pro
 	return questions, nil
 }
 
-func (g *Generator) EvaluateTopicAssessment(ctx context.Context,topic string,resposne string) (TopicEvaluationAIResponse, error) {
+func (g *Generator) EvaluateTopicAssessment(ctx context.Context, topic string, resposne string) (TopicEvaluationAIResponse, error) {
 	start := time.Now()
 	log.Println("Evaluating Answers of Assessment Questions for topic: ", topic, " Starting at ", start)
-	prompt := g.buildAssessmentEvaluationPrompt(topic,resposne)
-	res, err := g.Provider.EvaluateTopicSession(ctx,prompt)
+	prompt := g.buildAssessmentEvaluationPrompt(topic, resposne)
+	res, err := g.Provider.EvaluateTopicSession(ctx, prompt)
 	log.Println("Evaluation completed in: ", time.Since(start))
 	if err != nil {
 		return TopicEvaluationAIResponse{}, err
@@ -269,5 +307,76 @@ func (g *Generator) EvaluateTopicAssessment(ctx context.Context,topic string,res
 	if err := json.Unmarshal([]byte(res), &aiRes); err != nil {
 		return TopicEvaluationAIResponse{}, fmt.Errorf("failed to parse evaluation JSON: %w", err)
 	}
-	return aiRes,nil
+
+	if aiRes.NewTier < 1 {
+		aiRes.NewTier = 1
+	} else if aiRes.NewTier > 10 {
+		aiRes.NewTier = 10
+	}
+
+	return aiRes, nil
+}
+
+// GenerateReviewCards asks the LLM to produce generative flashcards for a topic,
+// scaled to the user's tier and seeded with the topic's lesson summaries and concept tags.
+func (g *Generator) GenerateReviewCards(ctx context.Context, topic string, tier int, content string, questionCount int) ([]models.ReviewCardInput, error) {
+	prompt := g.buildReviewCardsPrompt(topic, tier, content, questionCount)
+	start := time.Now()
+	log.Println("Generating Review Cards for topic: ", topic, " Starting at ", start)
+	res, err := g.Provider.GenerateReviewCards(ctx, prompt)
+	if err != nil {
+		log.Println("Error generating review cards:", err)
+		return nil, err
+	}
+	log.Println("Review Cards generated successfully: ", time.Since(start))
+
+	var aiRes ReviewCardsAIResponse
+	if err := json.Unmarshal([]byte(res), &aiRes); err != nil {
+		log.Println("Error parsing review cards JSON:", err)
+		return nil, fmt.Errorf("failed to parse review cards JSON: %w", err)
+	}
+
+	cards := make([]models.ReviewCardInput, 0, len(aiRes.Cards))
+	for _, c := range aiRes.Cards {
+		if strings.TrimSpace(c.Prompt) == "" || strings.TrimSpace(c.Answer) == "" {
+			continue
+		}
+		cards = append(cards, models.ReviewCardInput{
+			Prompt:     strings.TrimSpace(c.Prompt),
+			Answer:     strings.TrimSpace(c.Answer),
+			ConceptTag: strings.TrimSpace(c.ConceptTag),
+		})
+	}
+	return cards, nil
+}
+
+// SocraticFollowUp asks the LLM for a conceptual "Why?" follow-up on a
+// free-text answer. The evaluation is conceptual, not exact-match.
+func (g *Generator) SocraticFollowUp(ctx context.Context, topic string, tier int, question string, userAnswer string) (models.SocraticFollowUp, error) {
+	var empty models.SocraticFollowUp
+	prompt := g.buildSocraticPrompt(topic, tier, question, userAnswer)
+	start := time.Now()
+	log.Println("Generating Socratic follow-up for topic: ", topic, " Starting at ", start)
+	res, err := g.Provider.GenerateSocraticFollowUp(ctx, prompt)
+	if err != nil {
+		log.Println("Error generating Socratic follow-up:", err)
+		return empty, err
+	}
+	log.Println("Socratic follow-up generated in: ", time.Since(start))
+
+	var aiRes SocraticFollowUpAIResponse
+	if err := json.Unmarshal([]byte(res), &aiRes); err != nil {
+		log.Println("Error parsing Socratic follow-up JSON:", err)
+		return empty, fmt.Errorf("failed to parse Socratic follow-up JSON: %w", err)
+	}
+
+	if strings.TrimSpace(aiRes.FollowUp) == "" {
+		return empty, fmt.Errorf("empty follow_up in Socratic response")
+	}
+
+	return models.SocraticFollowUp{
+		FollowUp:    strings.TrimSpace(aiRes.FollowUp),
+		Feedback:    strings.TrimSpace(aiRes.Feedback),
+		Explanation: strings.TrimSpace(aiRes.Explanation),
+	}, nil
 }

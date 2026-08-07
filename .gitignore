@@ -38,8 +38,17 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
-migrations
 
 # generated native folders
 /ios
 /android
+
+skills-lock.json
+.agents
+.superdesign
+
+# backend build artifacts
+backend/bin/
+backend/lockin_android_arm64
+docs/
+outputs/

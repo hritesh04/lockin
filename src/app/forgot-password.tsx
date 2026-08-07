@@ -1,7 +1,9 @@
-import { forgotPassword } from '@/lib/api';
-import { Feather, Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { forgotPassword } from "@/lib/api";
+import { tokens } from "@/theme/tokens";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { ArrowLeft, ArrowRight, Mail } from "lucide-react-native";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,20 +14,20 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ForgotPasswordScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const handleForgot = async () => {
     if (!email) {
-      setError('Email is required');
+      setError("Email is required");
       return;
     }
     setLoading(true);
@@ -34,7 +36,9 @@ export default function ForgotPasswordScreen() {
       await forgotPassword(email);
       setSuccess(true);
     } catch (e: any) {
-      setError(e.response?.data?.error || 'Something went wrong. Please try again.');
+      setError(
+        e.response?.data?.error || "Something went wrong. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -42,37 +46,31 @@ export default function ForgotPasswordScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Back Button */}
-        <TouchableOpacity 
-          style={styles.backBtn}
-          onPress={() => router.back()}
-        >
-          <Feather name="arrow-left" size={24} color="#0F172A" />
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <ArrowLeft size={20} color={tokens.colors.textPrimary} />
         </TouchableOpacity>
 
-        {/* Branding Header */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Ionicons name="flame" color="#FFF" size={32} />
+            <Ionicons name="flame" color="#FFF" size={28} />
           </View>
         </View>
 
-        {/* Welcome Section */}
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeTitle}>Reset Password</Text>
           <Text style={styles.welcomeSubtitle}>
-            {success 
-              ? "If an account exists, we've sent instructions to your email." 
+            {success
+              ? "If an account exists, we've sent instructions to your email."
               : "Enter your email address and we'll send you instructions to reset your password."}
           </Text>
         </View>
@@ -80,15 +78,19 @@ export default function ForgotPasswordScreen() {
         {!success ? (
           <View style={styles.form}>
             {error && <Text style={styles.errorText}>{error}</Text>}
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.label}>EMAIL ADDRESS</Text>
               <View style={styles.inputWrapper}>
-                <Feather name="mail" color="#94A3B8" size={20} style={styles.inputIcon} />
+                <Mail
+                  color={tokens.colors.textTertiary}
+                  size={18}
+                  style={styles.inputIcon}
+                />
                 <TextInput
                   style={styles.input}
                   placeholder="name@example.com"
-                  placeholderTextColor="#CBD5E1"
+                  placeholderTextColor={tokens.colors.textTertiary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
@@ -107,7 +109,11 @@ export default function ForgotPasswordScreen() {
               ) : (
                 <>
                   <Text style={styles.actionBtnText}>Send Instructions</Text>
-                  <Feather name="arrow-right" color="#FFF" size={20} style={{ marginLeft: 8 }} />
+                  <ArrowRight
+                    color="#FFF"
+                    size={18}
+                    style={{ marginLeft: 8 }}
+                  />
                 </>
               )}
             </TouchableOpacity>
@@ -115,16 +121,15 @@ export default function ForgotPasswordScreen() {
         ) : (
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => router.replace('/auth')}
+            onPress={() => router.replace("/auth")}
           >
             <Text style={styles.actionBtnText}>Back to Login</Text>
           </TouchableOpacity>
         )}
 
-        {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Remember your password? </Text>
-          <TouchableOpacity onPress={() => router.replace('/auth')}>
+          <TouchableOpacity onPress={() => router.replace("/auth")}>
             <Text style={styles.linkText}>Sign in</Text>
           </TouchableOpacity>
         </View>
@@ -136,50 +141,50 @@ export default function ForgotPasswordScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: tokens.colors.base,
   },
   scrollContent: {
     paddingHorizontal: 32,
   },
   backBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: tokens.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 24,
+    borderWidth: 1,
+    borderColor: tokens.colors.borderSubtle,
   },
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 32,
   },
   logoContainer: {
     width: 64,
     height: 64,
-    backgroundColor: '#F97316',
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#F97316',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
-    elevation: 8,
+    backgroundColor: tokens.colors.accent,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 4px 16px rgba(0, 113, 227, 0.25)",
   },
   welcomeSection: {
     marginBottom: 40,
   },
   welcomeTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontSize: tokens.fontSize["4xl"],
+    fontFamily: tokens.fontFamily.display,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
     letterSpacing: -1,
   },
   welcomeSubtitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#64748B',
+    fontSize: tokens.fontSize.lg,
+    fontFamily: tokens.fontFamily.body,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.colors.textSecondary,
     marginTop: 8,
     lineHeight: 24,
   },
@@ -190,69 +195,71 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#94A3B8',
-    letterSpacing: 1,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textSecondary,
+    letterSpacing: 0.5,
     marginLeft: 4,
   },
   inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: tokens.colors.surface,
+    borderWidth: 1,
+    borderColor: tokens.colors.borderSubtle,
+    borderRadius: tokens.radius.lg,
     paddingHorizontal: 16,
-    height: 60,
+    height: 56,
   },
   inputIcon: {
     marginRight: 10,
   },
   input: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0F172A',
+    fontSize: tokens.fontSize.lg,
+    fontFamily: tokens.fontFamily.bodyMedium,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.colors.textPrimary,
   },
   errorText: {
-    color: '#EF4444',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
+    color: "#ef4444",
+    fontSize: tokens.fontSize.base,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.semibold,
+    textAlign: "center",
   },
   actionBtn: {
-    backgroundColor: '#F97316',
-    height: 60,
-    borderRadius: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#F97316',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    backgroundColor: tokens.colors.accent,
+    height: 56,
+    borderRadius: tokens.radius.full,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 4px 12px rgba(0, 113, 227, 0.25)",
     marginTop: 10,
   },
   actionBtnText: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: '800',
+    color: "#FFF",
+    fontSize: tokens.fontSize.lg,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
     marginTop: 40,
   },
   footerText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#64748B',
+    fontSize: tokens.fontSize.base,
+    fontFamily: tokens.fontFamily.body,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.colors.textSecondary,
   },
   linkText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#F97316',
+    fontSize: tokens.fontSize.base,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.accent,
   },
 });

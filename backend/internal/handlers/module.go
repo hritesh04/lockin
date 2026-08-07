@@ -19,6 +19,7 @@ type UpdateStatusReq struct {
 // @Router       /modules/status/{id} [post]
 func (h *APIHandler) UpdateModuleStatus(c *fiber.Ctx) error {
 	moduleID := c.Params("id")
+	userIDStr := c.Locals("user_id").(string)
 	var body struct {
 		Status string `json:"status"`
 	}
@@ -26,7 +27,7 @@ func (h *APIHandler) UpdateModuleStatus(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid body"})
 	}
 
-	module, err := h.Module.UpdateStatus(c.Context(), moduleID, body.Status)
+	module, err := h.Module.UpdateStatus(c.Context(), moduleID, body.Status, userIDStr)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to update module status"})
 	}

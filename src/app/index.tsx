@@ -1,7 +1,11 @@
-import FloatingNavBar from '@/components/FloatingNavBar';
-import { Feather, Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { BottomNav } from "@/components/BottomNav";
+import { Header } from "@/components/Header";
+import { HeroStreakCard } from "@/components/HeroStreakCard";
+import { StatRow } from "@/components/StatRow";
+import { TopicCard } from "@/components/TopicCard";
+import { useFocusEffect, useRouter } from "expo-router";
+import { Book, RefreshCcw, Timer, X, Zap } from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,79 +16,113 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createTopic, generateTopicAssessment, getActivity, getMe, isAbortError, listTopics, proficiencyToApi } from '../lib/api';
-import { useAuthStore } from '../store/auth';
-import { useSessionStore } from '../store/session';
-import { Topic, useTopicsStore } from '../store/topics';
-import { useUserStore } from '../store/user';
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  createTopic,
+  generateTopicAssessment,
+  getActivity,
+  getMe,
+  isAbortError,
+  listTopics,
+  proficiencyToApi,
+} from "../lib/api";
+import { useAuthStore } from "../store/auth";
+import { useReviewsStore } from "../store/reviews";
+import { useSessionStore } from "../store/session";
+import { Topic, useTopicsStore } from "../store/topics";
+import { useUserStore } from "../store/user";
+import { tokens } from "../theme/tokens";
+
+const TOPIC_EMOJIS = ["📐", "🧮", "📊", "🧠", "💡", "🔬"];
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const streakCount = useUserStore(state => state.streakCount);
-  const activityHistory = useUserStore(state => state.activityHistory);
-  const topics = useTopicsStore(state => state.topics);
-  const addTopic = useTopicsStore(state => state.addTopic);
-  const setTopics = useTopicsStore(state => state.setTopics);
-  const hydrateUser = useUserStore(state => state.hydrateFromServer);
-  const setActivityHistory = useUserStore(state => state.setActivityHistory);
-  const fullActivityHistory = useUserStore(state => state.activityHistory);
+  const streakCount = useUserStore((state) => state.streakCount);
+  const activityHistory = useUserStore((state) => state.activityHistory);
+  const dailyCommitment = useUserStore((state) => state.dailyCommitment);
+  const topics = useTopicsStore((state) => state.topics);
+  const addTopic = useTopicsStore((state) => state.addTopic);
+  const setTopics = useTopicsStore((state) => state.setTopics);
+  const hydrateUser = useUserStore((state) => state.hydrateFromServer);
+  const setActivityHistory = useUserStore((state) => state.setActivityHistory);
+  const dueCount = useReviewsStore((state) => state.dueCount);
+  const refreshDueCount = useReviewsStore((state) => state.refreshDueCount);
 
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
-  const [topicName, setTopicName] = useState('');
-  const [selectedProficiency, setSelectedProficiency] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
+  const [topicName, setTopicName] = useState("");
+  const [selectedProficiency, setSelectedProficiency] = useState<
+    "beginner" | "intermediate" | "advanced"
+  >("beginner");
   const [isGenerating, setIsGenerating] = useState(false);
-  
-  // Calculate dots for last 7 days
-  const dbActivityHistory: ('active' | 'inactive')[] = Array(7).fill('inactive').map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dayStr = d.toISOString().split('T')[0];
-    const hasActivity = fullActivityHistory.find(a => a.day === dayStr);
-    return hasActivity ? 'active' : 'inactive';
-  });
 
-  const token = useAuthStore(state => state.token);
+  const dbActivityHistory: ("active" | "inactive")[] = Array(7)
+    .fill("inactive")
+    .map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const dayStr = d.toISOString().split("T")[0];
+      const hasActivity = activityHistory.find((a) => a.day === dayStr);
+      return hasActivity ? "active" : "inactive";
+    });
+
+  const daysActive = dbActivityHistory.filter((d) => d === "active").length;
+
+  // Calculate today's time spent from activity history
+  const todayStr = new Date().toISOString().split("T")[0];
+  const todayData = activityHistory.find((a) => a.day === todayStr);
+  const todayTimeSec = todayData?.total_time || 0;
+  const todayTimeMin = Math.round(todayTimeSec / 60);
+
+  const token = useAuthStore((state) => state.token);
 
   useFocusEffect(
     useCallback(() => {
       const controller = new AbortController();
 
-    const run = async () => {
-      if (!token) return;
-      try {
-        const [userData, activityInfo, apiTopics] = await Promise.all([
-          getMe(controller.signal),
-          getActivity(controller.signal),
-          listTopics(controller.signal),
-        ]);
+      const run = async () => {
+        if (!token) return;
+        try {
+          const [userData, activityInfo, apiTopics] = await Promise.all([
+            getMe(controller.signal),
+            getActivity(controller.signal),
+            listTopics(controller.signal),
+          ]);
 
-        if (!controller.signal.aborted) {
-          hydrateUser(userData);
-          setActivityHistory(activityInfo.activity || []);
+          if (!controller.signal.aborted) {
+            hydrateUser(userData);
+            setActivityHistory(activityInfo.activity || []);
+          }
+
+          refreshDueCount();
+
+          const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            tier: t.tier ?? 1,
+            remark: t.remark ?? null,
+            accuracyPercent: 0,
+            sessionsCompleted: 0,
+            weakConcepts: [],
+            status: t.status || "completed",
+          }));
+
+          if (!controller.signal.aborted) setTopics(mappedTopics);
+        } catch (e) {
+          if (!isAbortError(e)) {
+            console.warn("API sync failed", e);
+          }
         }
-        
-        const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
-          id: t.id,
-          title: t.title,
-          currentTier: t.currentTier ?? 1,
-          familiarityLevel: t.familiarityLevel ?? 'beginner',
-          accuracyPercent: 0, 
-          sessionsCompleted: 0,
-          weakConcepts: [],
-          status: t.status || 'completed',
-        }));
-        
-        if (!controller.signal.aborted) setTopics(mappedTopics);
-      } catch (e) {
-        if (!isAbortError(e)) {
-          console.warn('API sync failed', e);
-        }
-      }
-    };
+      };
 
       void run();
 
@@ -94,9 +132,8 @@ export default function HomeScreen() {
     }, [setTopics, token])
   );
 
-  // Polling for generating topics
   useEffect(() => {
-    const hasGeneratingTopic = topics.some(t => t.status === 'generating');
+    const hasGeneratingTopic = topics.some((t) => t.status === "generating");
     if (!hasGeneratingTopic || !token) return;
 
     const interval = setInterval(async () => {
@@ -105,16 +142,16 @@ export default function HomeScreen() {
         const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
           id: t.id,
           title: t.title,
-          currentTier: t.currentTier ?? 1,
-          familiarityLevel: t.familiarityLevel ?? 'beginner',
+          tier: t.tier ?? 1,
+          remark: t.remark ?? null,
           accuracyPercent: 0,
           sessionsCompleted: 0,
           weakConcepts: [],
-          status: t.status || 'completed',
+          status: t.status || "completed",
         }));
         setTopics(mappedTopics);
       } catch (e) {
-        console.warn('Polling failed', e);
+        console.warn("Polling failed", e);
       }
     }, 5000);
 
@@ -127,48 +164,58 @@ export default function HomeScreen() {
     const controller = new AbortController();
 
     try {
-      if (selectedProficiency === 'beginner') {
-        const { topic: apiTopic } = await createTopic({
-          title: topicName.trim(),
-          familiarity_level: proficiencyToApi(selectedProficiency),
-        }, controller.signal);
-        
+      if (selectedProficiency === "beginner") {
+        const { topic: apiTopic } = await createTopic(
+          {
+            title: topicName.trim(),
+            familiarity_level: proficiencyToApi(selectedProficiency),
+          },
+          controller.signal
+        );
+
         const newTopic: Topic = {
-            id: apiTopic.id,
-            title: apiTopic.title,
-            currentTier: apiTopic.currentTier ?? 1,
-            familiarityLevel: apiTopic.familiarityLevel ?? 'beginner',
-            accuracyPercent: 0,
-            sessionsCompleted: 0,
-            weakConcepts: [],
-            status: 'generating',
+          id: apiTopic.id,
+          title: apiTopic.title,
+          tier: apiTopic.tier ?? 1,
+          remark: apiTopic.remark ?? null,
+          accuracyPercent: 0,
+          sessionsCompleted: 0,
+          weakConcepts: [],
+          status: "generating",
         };
         addTopic(newTopic);
         setShowModal(false);
-        setTopicName('');
-        setSelectedProficiency('beginner');
+        setTopicName("");
+        setSelectedProficiency("beginner");
       } else {
-        // Diagnostic flow
-        const res = await generateTopicAssessment({
-          title: topicName.trim(),
-          familiarity_level: proficiencyToApi(selectedProficiency),
-        }, controller.signal);
+        const res = await generateTopicAssessment(
+          {
+            title: topicName.trim(),
+            familiarity_level: proficiencyToApi(selectedProficiency),
+          },
+          controller.signal
+        );
 
-        // Pre-load session store with questions
-        useSessionStore.getState().startSession('diagnostic', res.questions);
+        useSessionStore.getState().startSession({
+          sessionId: `diagnostic-${Date.now()}`,
+          type: "diagnostic",
+          topicId: res.topic,
+          topicTitle: topicName.trim(),
+          questions: res.questions,
+        });
 
         setShowModal(false);
         const savedTopicName = topicName.trim();
-        setTopicName('');
-        setSelectedProficiency('beginner');
-        
+        setTopicName("");
+        setSelectedProficiency("beginner");
+
         router.push({
-          pathname: '/topics/diagnostic/session' as any,
-          params: { 
+          pathname: "/topics/diagnostic/session" as any,
+          params: {
             topicName: savedTopicName,
-            isDiagnostic: 'true',
+            isDiagnostic: "true",
             proficiency: selectedProficiency,
-          }
+          },
         });
       }
     } catch (e) {
@@ -180,60 +227,20 @@ export default function HomeScreen() {
     }
   };
 
-  const renderHeroCard = (topic: Topic) => (
-    <TouchableOpacity 
-      style={styles.heroPopulatedCard}
-      activeOpacity={0.8}
-      onPress={() => router.push(`/topics/${topic.id}`)}
-    >
-      <View style={styles.heroGlow} />
-      <View style={styles.heroPopulatedInner}>
-        <View style={styles.heroPopulatedLeft}>
-          <View style={styles.heroPopulatedIconBox}>
-            <Feather name="terminal" size={28} color="#2563EB" />
-          </View>
-          <View>
-            <Text style={styles.heroPopulatedTitle}>{topic.title}</Text>
-            {topic.status === 'generating' ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                <ActivityIndicator size="small" color="#2563EB" style={{ marginRight: 6 }} />
-                <Text style={[styles.heroPopulatedSubtitle, { color: '#2563EB' }]}>Generating Roadmap...</Text>
-              </View>
-            ) : (
-              <Text style={styles.heroPopulatedSubtitle}>{topic.sessionsCompleted} sessions</Text>
-            )}
-          </View>
-        </View>
-        <View style={styles.heroPopulatedPlayBtn}>
-          {topic.status === 'generating' ? (
-            <Feather name="loader" size={24} color="#94A3B8" />
-          ) : (
-            <Ionicons name="play" size={24} color="#0F172A" />
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
   const renderEmptyState = () => (
-    <View style={styles.heroCard}>
-      <View style={styles.heroGlow} />
-      <View style={{ zIndex: 10 }}>
-        <View style={styles.heroIconBox}>
-          <Feather name="book" size={32} color="#2563EB" />
-        </View>
-        <Text style={styles.heroTitle}>Welcome to LockIn</Text>
-        <View style={styles.heroSubContainer}>
-          <Text style={styles.heroSubtitle}>Add a new topic to begin.</Text>
-        </View>
-        <TouchableOpacity 
-          style={styles.heroBtn}
-          activeOpacity={0.8}
-          onPress={() => setShowModal(true)}
-        >
-          <Text style={styles.heroBtnText}>Add First Topic</Text>
-        </TouchableOpacity>
+    <View style={styles.emptyCard}>
+      <View style={styles.emptyIconBox}>
+        <Book size={28} color={tokens.colors.accent} />
       </View>
+      <Text style={styles.emptyTitle}>Welcome to LockIn</Text>
+      <Text style={styles.emptySubtitle}>Add a new topic to begin.</Text>
+      <TouchableOpacity
+        style={styles.emptyButton}
+        activeOpacity={0.8}
+        onPress={() => setShowModal(true)}
+      >
+        <Text style={styles.emptyButtonText}>Add First Topic</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -241,76 +248,117 @@ export default function HomeScreen() {
   const heroTopic = mainTopics[0];
   const additionalTopics = mainTopics.slice(1);
 
+  const reviewsDueStats = [
+    {
+      icon:
+        dueCount > 0 ? (
+          <RefreshCcw size={18} color={tokens.colors.accent} />
+        ) : (
+          <Zap size={18} color={tokens.colors.accent} />
+        ),
+      label: "REVIEWS",
+      value: dueCount > 0 ? String(dueCount) : "0",
+      sub: dueCount > 0 ? "due today" : "all caught up",
+      onPress: () => router.push("/review" as any),
+    },
+  ];
+
+  const todayStats = [
+    {
+      icon: <Timer size={18} color={tokens.colors.accent} />,
+      label: "TODAY",
+      value: `${todayTimeMin}`,
+      sub: `of ${dailyCommitment ?? 15} min goal`,
+    },
+  ];
+
   return (
     <View style={styles.container}>
-      <ScrollView 
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 24 }]}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + tokens.spacing[6] },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.streakBanner}>
-          <View style={styles.streakLeft}>
-            <View style={styles.flameCircle}>
-              <Ionicons name="flame" size={24} color="#F97316" />
-            </View>
-            <View>
-              <Text style={styles.streakCount}>{streakCount}</Text>
-              <Text style={styles.streakLabel}>DAY STREAK</Text>
-            </View>
-          </View>
-          <View style={styles.streakRight}>
-            <Text style={styles.streakRightLabel}>KEEP THE MOMENTUM</Text>
-            <View style={styles.streakDots}>
-              {dbActivityHistory.map((status, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.sDot,
-                    status === 'active' && styles.sDotActive,
-                  ]}
-                />
-              ))}
-            </View>
-          </View>
-        </View>
+        <Header
+          greeting={getGreeting()}
+          subtitle="Ready to lock in?"
+          initials="A"
+          onAvatarPress={() => router.push("/profile" as any)}
+        />
 
-        {/* Hero Topic or Empty */}
-        {heroTopic ? renderHeroCard(heroTopic) : renderEmptyState()}
+        <HeroStreakCard
+          streakCount={streakCount}
+          dailyCommitment={dailyCommitment}
+          daysActive={daysActive}
+        />
 
-        {/* Additional Topics */}
-        {additionalTopics.map(t => (
-          <TouchableOpacity
+        <StatRow stats={[...(reviewsDueStats || []), ...todayStats]} />
+
+        {heroTopic ? (
+          <TopicCard
+            title={heroTopic.title}
+            sessions={heroTopic.sessionsCompleted}
+            progress={0}
+            emoji={TOPIC_EMOJIS[0]}
+            isGenerating={heroTopic.status === "generating"}
+            onPress={() =>
+              heroTopic.status !== "generating" &&
+              router.push(`/topics/${heroTopic.id}`)
+            }
+          />
+        ) : (
+          renderEmptyState()
+        )}
+
+        {additionalTopics.map((t, i) => (
+          <TopicCard
             key={t.id}
-            style={[styles.courseCard, t.status === 'generating' && { opacity: 0.7 }]}
-            activeOpacity={t.status === 'generating' ? 1 : 0.7}
-            onPress={() => t.status === 'generating' ? null : router.push(`/topics/${t.id}`)}
-          >
-            <View style={styles.courseCardIconBox}>
-              <Feather name="database" size={24} color="#6366F1" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.courseCardTitle}>{t.title}</Text>
-              {t.status === 'generating' ? (
-                <Text style={[styles.courseCardSub, { color: '#6366F1' }]}>Generating roadmap...</Text>
-              ) : (
-                <Text style={styles.courseCardSub}>{t.sessionsCompleted} sessions completed</Text>
-              )}
-            </View>
-          </TouchableOpacity>
+            title={t.title}
+            sessions={t.sessionsCompleted}
+            progress={0}
+            emoji={TOPIC_EMOJIS[(i + 1) % TOPIC_EMOJIS.length]}
+            isGenerating={t.status === "generating"}
+            onPress={() =>
+              t.status !== "generating" && router.push(`/topics/${t.id}`)
+            }
+          />
         ))}
       </ScrollView>
 
-      <FloatingNavBar onAddPress={() => setShowModal(true)} activeScreen='home'/>
+      <BottomNav onAddPress={() => setShowModal(true)} activeScreen="home" />
 
-      <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <Modal
+        visible={showModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
+        >
           <View style={styles.modalBackdrop}>
-            <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowModal(false)} activeOpacity={1} />
-            
-            <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              onPress={() => setShowModal(false)}
+              activeOpacity={1}
+            />
+
+            <View
+              style={[
+                styles.modalSheet,
+                { paddingBottom: Math.max(insets.bottom, 24) },
+              ]}
+            >
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add New Topic</Text>
-                <TouchableOpacity onPress={() => setShowModal(false)} style={styles.modalClose}>
-                  <Feather name="x" size={24} color="#94A3B8" />
+                <TouchableOpacity
+                  onPress={() => setShowModal(false)}
+                  style={styles.modalClose}
+                >
+                  <X size={24} color={tokens.colors.textTertiary} />
                 </TouchableOpacity>
               </View>
 
@@ -319,7 +367,7 @@ export default function HomeScreen() {
                 <TextInput
                   style={styles.formInput}
                   placeholder="Enter topic name"
-                  placeholderTextColor="#64748B"
+                  placeholderTextColor={tokens.colors.textTertiary}
                   value={topicName}
                   onChangeText={setTopicName}
                 />
@@ -327,42 +375,70 @@ export default function HomeScreen() {
 
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Proficiency Level</Text>
-                
-                {['beginner', 'intermediate', 'advanced'].map(level => {
-                  const isActive = selectedProficiency === level;
-                  const label = level.charAt(0).toUpperCase() + level.slice(1);
-                  const desc = level === 'beginner' ? 'New to this topic' : level === 'intermediate' ? 'Some experience' : 'Expert level';
-                  
-                  return (
-                    <TouchableOpacity
-                      key={level}
-                      activeOpacity={0.7}
-                      onPress={() => setSelectedProficiency(level as any)}
-                      style={[styles.profCard, isActive && styles.profCardActive]}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                        <View style={[styles.profDot, isActive && styles.profDotActive]} />
-                        <Text style={styles.profTitle}>{label}</Text>
-                      </View>
-                      <Text style={styles.profDesc}>{desc}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+
+                {(["beginner", "intermediate", "advanced"] as const).map(
+                  (level) => {
+                    const isActive = selectedProficiency === level;
+                    const label =
+                      level.charAt(0).toUpperCase() + level.slice(1);
+                    const desc =
+                      level === "beginner"
+                        ? "New to this topic"
+                        : level === "intermediate"
+                        ? "Some experience"
+                        : "Expert level";
+
+                    return (
+                      <TouchableOpacity
+                        key={level}
+                        activeOpacity={0.7}
+                        onPress={() => setSelectedProficiency(level)}
+                        style={[
+                          styles.profCard,
+                          isActive && styles.profCardActive,
+                        ]}
+                      >
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            marginBottom: 6,
+                          }}
+                        >
+                          <View
+                            style={[
+                              styles.profDot,
+                              isActive && styles.profDotActive,
+                            ]}
+                          />
+                          <Text style={styles.profTitle}>{label}</Text>
+                        </View>
+                        <Text style={styles.profDesc}>{desc}</Text>
+                      </TouchableOpacity>
+                    );
+                  }
+                )}
               </View>
 
               <View style={styles.modalActions}>
-                <TouchableOpacity style={styles.btnCancel} onPress={() => setShowModal(false)}>
+                <TouchableOpacity
+                  style={styles.btnCancel}
+                  onPress={() => setShowModal(false)}
+                >
                   <Text style={styles.btnCancelText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.btnSubmit} 
+                <TouchableOpacity
+                  style={styles.btnSubmit}
                   onPress={handleCreate}
                   disabled={isGenerating}
                 >
-                  {isGenerating ? <ActivityIndicator color="#FFF" /> : <Text style={styles.btnSubmitText}>Add Topic</Text>}
+                  {isGenerating ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.btnSubmitText}>Add Topic</Text>
+                  )}
                 </TouchableOpacity>
               </View>
-
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -374,345 +450,188 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: tokens.colors.base,
   },
   scrollContent: {
-    paddingHorizontal: 24,
+    paddingHorizontal: tokens.spacing[6],
     paddingBottom: 160,
-    gap: 24,
+    gap: tokens.spacing[4],
   },
-  streakBanner: {
-    backgroundColor: '#0F172A',
-    borderRadius: 24,
-    padding: 24,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#CBD5E1',
-    shadowOpacity: 0.6,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  streakLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  flameCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(249, 115, 22, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  streakCount: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFF',
-    lineHeight: 32,
-    letterSpacing: -0.5,
-  },
-  streakLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  streakRight: {
-    alignItems: 'flex-end',
-  },
-  streakRightLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#64748B',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  streakDots: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  sDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#334155',
-  },
-  sDotActive: {
-    backgroundColor: '#F97316',
-  },
-
-  heroCard: {
-    backgroundColor: '#E0F2FE',
-    borderRadius: 40,
-    padding: 32,
-    overflow: 'hidden',
-    shadowColor: '#BFDBFE',
-    shadowOpacity: 0.8,
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 24,
-    elevation: 8,
-  },
-  heroGlow: {
-    position: 'absolute',
-    top: -40,
-    right: -40,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(147, 197, 253, 0.3)',
-  },
-  heroIconBox: {
-    width: 64,
-    height: 64,
-    backgroundColor: '#FFF',
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-  },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.5,
-  },
-  heroSubContainer: {
-    marginBottom: 32,
-  },
-  heroSubtitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#64748B',
-    marginTop: 4,
-  },
-  heroBtn: {
-    backgroundColor: '#0F172A',
-    width: '100%',
-    paddingVertical: 18,
-    borderRadius: 100,
-    alignItems: 'center',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 16,
-  },
-  heroBtnText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  heroPopulatedCard: {
-    backgroundColor: '#E0F2FE',
-    borderRadius: 40,
-    padding: 24,
-    overflow: 'hidden',
-    shadowColor: '#BFDBFE',
-    shadowOpacity: 0.8,
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 24,
-    elevation: 8,
-  },
-  heroPopulatedInner: {
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  heroPopulatedLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    flex: 1,
-    paddingRight: 16,
-  },
-  heroPopulatedIconBox: {
-    width: 60,
-    height: 60,
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-  },
-  heroPopulatedTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.5,
-  },
-  heroPopulatedSubtitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748B',
-    marginTop: 2,
-  },
-  heroPopulatedPlayBtn: {
-    width: 48,
-    height: 48,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  courseCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 40,
-    padding: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
+  emptyCard: {
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius["3xl"],
+    padding: tokens.spacing[8],
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#94A3B8',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
+    borderColor: tokens.colors.border,
   },
-  courseCardIconBox: {
+  emptyIconBox: {
     width: 56,
     height: 56,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: tokens.radius.lg,
+    backgroundColor: tokens.colors.base,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: tokens.spacing[5],
   },
-  courseCardTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0F172A',
+  emptyTitle: {
+    fontSize: tokens.fontSize["2xl"],
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
+    letterSpacing: -0.5,
   },
-  courseCardSub: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748B',
+  emptySubtitle: {
+    fontSize: tokens.fontSize.base,
+    color: tokens.colors.textSecondary,
+    marginTop: tokens.spacing[1],
+    marginBottom: tokens.spacing[6],
+  },
+  emptyButton: {
+    backgroundColor: tokens.colors.accent,
+    paddingVertical: tokens.spacing[4],
+    paddingHorizontal: tokens.spacing[8],
+    borderRadius: tokens.radius.full,
+  },
+  emptyButtonText: {
+    color: "#ffffff",
+    fontSize: tokens.fontSize.lg,
+    fontWeight: tokens.fontWeight.semibold,
+  },
+  reviewCard: {
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.xl,
+    padding: tokens.spacing[4],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.spacing[3],
+    borderWidth: 1,
+    borderColor: tokens.colors.border,
+  },
+  reviewIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.base,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  reviewCardTitle: {
+    fontSize: tokens.fontSize.base,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
+  },
+  reviewCardSub: {
+    fontSize: tokens.fontSize.sm,
+    color: tokens.colors.textSecondary,
     marginTop: 2,
   },
-
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
   },
   modalSheet: {
-    backgroundColor: '#0F172A',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 32,
-    shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 30,
-    elevation: 24,
+    backgroundColor: tokens.colors.darkBase,
+    borderTopLeftRadius: tokens.radius["3xl"],
+    borderTopRightRadius: tokens.radius["3xl"],
+    padding: tokens.spacing[8],
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: tokens.spacing[6],
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#FFF',
+    fontSize: tokens.fontSize.xl,
+    fontWeight: tokens.fontWeight.bold,
+    color: "#ffffff",
   },
   modalClose: {
-    padding: 4,
+    padding: tokens.spacing[1],
   },
   formGroup: {
-    marginBottom: 24,
+    marginBottom: tokens.spacing[6],
   },
   formLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#CBD5E1',
-    marginBottom: 12,
+    fontSize: tokens.fontSize.base,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.colors.textSecondary,
+    marginBottom: tokens.spacing[3],
   },
   formInput: {
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
+    backgroundColor: tokens.colors.darkSurface,
+    borderRadius: tokens.radius.sm,
     borderWidth: 1,
-    borderColor: '#334155',
-    color: '#FFF',
-    padding: 16,
-    fontSize: 16,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    color: "#ffffff",
+    padding: tokens.spacing[4],
+    fontSize: tokens.fontSize.lg,
   },
   profCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: tokens.colors.darkSurface,
     borderWidth: 2,
-    borderColor: '#334155',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing[4],
+    marginBottom: tokens.spacing[3],
   },
   profCardActive: {
-    backgroundColor: 'rgba(249, 115, 22, 0.1)',
-    borderColor: '#F97316',
+    backgroundColor: "rgba(0, 113, 227, 0.1)",
+    borderColor: tokens.colors.accent,
   },
   profDot: {
     width: 18,
     height: 18,
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#475569',
-    marginRight: 10,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    marginRight: tokens.spacing[3],
   },
   profDotActive: {
-    borderColor: '#F97316',
-    backgroundColor: '#F97316',
+    borderColor: tokens.colors.accent,
+    backgroundColor: tokens.colors.accent,
   },
   profTitle: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
+    color: "#ffffff",
+    fontSize: tokens.fontSize.lg,
+    fontWeight: tokens.fontWeight.bold,
   },
   profDesc: {
-    color: '#94A3B8',
-    fontSize: 14,
+    color: tokens.colors.textSecondary,
+    fontSize: tokens.fontSize.base,
     marginLeft: 28,
   },
   modalActions: {
-    flexDirection: 'row',
-    gap: 16,
-    marginTop: 8,
+    flexDirection: "row",
+    gap: tokens.spacing[4],
+    marginTop: tokens.spacing[2],
   },
   btnCancel: {
     flex: 1,
-    backgroundColor: '#1E293B',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
+    backgroundColor: tokens.colors.darkSurface,
+    paddingVertical: tokens.spacing[4],
+    borderRadius: tokens.radius.sm,
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   btnCancelText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
+    color: "#ffffff",
+    fontSize: tokens.fontSize.lg,
+    fontWeight: tokens.fontWeight.semibold,
   },
   btnSubmit: {
     flex: 1,
-    backgroundColor: '#F97316',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#F97316',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 16,
+    backgroundColor: tokens.colors.accent,
+    paddingVertical: tokens.spacing[4],
+    borderRadius: tokens.radius.sm,
+    alignItems: "center",
   },
   btnSubmitText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
+    color: "#ffffff",
+    fontSize: tokens.fontSize.lg,
+    fontWeight: tokens.fontWeight.semibold,
   },
 });

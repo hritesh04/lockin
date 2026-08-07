@@ -51,7 +51,9 @@ func (r *topicRepository) GetAll(ctx context.Context, userID uuid.UUID) ([]model
 	var topics []models.Topic
 	for rows.Next() {
 		var t models.Topic
-		rows.Scan(&t.ID, &t.UserID, &t.Title, &t.Tier, &t.Status, &t.Remark, &t.CreatedAt)
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Title, &t.Tier, &t.Status, &t.Remark, &t.CreatedAt); err != nil {
+			return nil, err
+		}
 		topics = append(topics, t)
 	}
 	return topics, nil
@@ -183,7 +185,7 @@ WHERE t.id = $1 AND t.user_id = $2
 
 GROUP BY t.id;`,
 		topicID, userID,
-	).Scan(&t.ID, &t.Title, &t.Tier,&t.SessionsCompleted,&t.TotalTimeSeconds, &modulesJSON)
+	).Scan(&t.ID, &t.Title, &t.Tier, &t.SessionsCompleted, &t.TotalTimeSeconds, &modulesJSON)
 
 	if err != nil {
 		return nil, err

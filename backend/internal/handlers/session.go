@@ -9,9 +9,10 @@ import (
 
 // StartSessionReq is the request body for starting a session
 type StartSessionReq struct {
-	TopicID  string `json:"topic_id"  example:"550e8400-e29b-41d4-a716-446655440000"`
-	LessonID string `json:"lesson_id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	QuizMode string `json:"quiz_mode" example:"options"` // options, text, lesson
+	TopicID    string `json:"topic_id"  example:"550e8400-e29b-41d4-a716-446655440000"`
+	LessonID   string `json:"lesson_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	QuizMode   string `json:"quiz_mode" example:"options"` // options, text, lesson
+	Interleave bool   `json:"interleave" example:"false"`  // mixed-review mode: mixes types and injects due review cards from other topics
 }
 
 type CompleteSessionReq struct {
@@ -19,9 +20,15 @@ type CompleteSessionReq struct {
 	Answers []UserAnswer `json:"answers"`
 }
 
+// SocraticFollowUpReq is the request body for a Socratic follow-up on a text answer
+type SocraticFollowUpReq struct {
+	QuestionID string `json:"question_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Answer     string `json:"answer" example:"Because momentum carries the optimizer past shallow local minima"`
+}
+
 type TopicAssessmentEvaluationReq struct {
-	Topic	string	`json:"topic"`
-	Assessment []UserAnswer	`json:"assessment"`
+	Topic      string       `json:"topic"`
+	Assessment []UserAnswer `json:"assessment"`
 }
 
 // StartSession godoc
@@ -38,7 +45,10 @@ type TopicAssessmentEvaluationReq struct {
 // @Router       /sessions/start [post]
 func (h *APIHandler) StartSession(c *fiber.Ctx) error {
 	userIDStr := c.Locals("user_id").(string)
-	userID, _ := uuid.Parse(userIDStr)
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"success": false, "error": "Invalid user id"})
+	}
 
 	var req StartSessionReq
 	if err := c.BodyParser(&req); err != nil {
@@ -64,12 +74,12 @@ func (h *APIHandler) StartSession(c *fiber.Ctx) error {
 		quizMode = "options"
 	}
 
-	sessionID, questions, err := h.Session.StartSession(c.Context(), topicID, lessonID, userID, quizMode)
+	sessionID, questions, err := h.Session.StartSession(c.Context(), topicID, lessonID, userID, quizMode, req.Interleave)
 	if err != nil {
 		if err.Error() == "Not enough questions. Generation might be pending." {
 			return c.Status(400).JSON(fiber.Map{"success": false, "error": err.Error()})
 		}
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed creating session: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed creating session"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -107,7 +117,7 @@ func (h *APIHandler) CompleteSession(c *fiber.Ctx) error {
 
 	err := h.Session.CompleteSession(c.Context(), sessionID, answersJSON, req.TopicID, userIDStr)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed completing session: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed completing session"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -116,6 +126,36 @@ func (h *APIHandler) CompleteSession(c *fiber.Ctx) error {
 			"status": "completed",
 		},
 	})
+}
+
+// SocraticFollowUp godoc
+// @Summary      Get a Socratic follow-up on a text answer
+// @Description  Evaluates a free-text answer conceptually and returns a "Why?" follow-up the user must answer before the explanation is revealed.
+// @Tags         sessions
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string                true  "Session UUID"
+// @Param        body body      SocraticFollowUpReq   true  "The question and the user's answer"
+// @Success      200  {object}  SuccessResponse        "Socratic follow-up"
+// @Failure      400  {object}  ErrorResponse          "Invalid input"
+// @Failure      500  {object}  ErrorResponse          "Internal server error"
+// @Router       /sessions/{id}/socratic [post]
+func (h *APIHandler) SocraticFollowUp(c *fiber.Ctx) error {
+	sessionID := c.Params("id")
+	userIDStr := c.Locals("user_id").(string)
+
+	var req SocraticFollowUpReq
+	if err := c.BodyParser(&req); err != nil || req.QuestionID == "" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
+	}
+
+	followUp, err := h.Session.SocraticFollowUp(c.Context(), sessionID, req.QuestionID, req.Answer, userIDStr)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed generating follow-up"})
+	}
+
+	return c.JSON(fiber.Map{"success": true, "data": followUp})
 }
 
 // GetLast7DaysActivity godoc
@@ -129,16 +169,19 @@ func (h *APIHandler) CompleteSession(c *fiber.Ctx) error {
 // @Router       /sessions/activity [get]
 func (h *APIHandler) GetUserActivity(c *fiber.Ctx) error {
 	userIDStr := c.Locals("user_id").(string)
-	userID, _ := uuid.Parse(userIDStr)
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"success": false, "error": "Invalid user id"})
+	}
 
 	activity, err := h.Session.GetUserActivity(c.Context(), userID)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed getting user activity: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed getting user activity"})
 	}
 
 	user, err := h.Auth.GetMe(c.Context(), userIDStr)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed getting user data: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed getting user data"})
 	}
 
 	return c.JSON(GetUserActivityResponse{

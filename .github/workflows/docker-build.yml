@@ -6,12 +6,69 @@ on:
       - main
     paths:
       - backend/**
+      - src/**
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+      - app.json
+      - .github/**
   workflow_dispatch:
 
 jobs:
+  test-and-lint:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fail if .env files are tracked
+        run: |
+          set -euo pipefail
+          staged=$(git diff --cached --name-only || true)
+          tracked=$(git ls-files || true)
+          bad=$(printf '%s\n%s\n' "$staged" "$tracked" \
+            | grep -E '(^|/)\.env($|\.)' \
+            | grep -Ev '(^|/)\.env\.(example|sample|template)$' \
+            || true)
+          if [ -n "$bad" ]; then
+            echo "::error::An .env file is staged or tracked. Secrets must never be committed."
+            echo "$bad"
+            exit 1
+          fi
+          echo "No .env secrets staged or tracked."
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: go vet
+        run: go vet ./...
+        working-directory: backend
+
+      - name: go test
+        run: go test ./...
+        working-directory: backend
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
   build-and-push:
     runs-on: ubuntu-24.04-arm
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

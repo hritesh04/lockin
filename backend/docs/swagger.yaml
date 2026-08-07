@@ -23,6 +23,17 @@ definitions:
       title:
         type: string
     type: object
+  github_com_acerowl_lockin_backend_internal_models.LessonActivity:
+    properties:
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      title:
+        type: string
+      topic_name:
+        type: string
+    type: object
   github_com_acerowl_lockin_backend_internal_models.Module:
     properties:
       concept_tags:
@@ -69,6 +80,10 @@ definitions:
     properties:
       answer:
         type: string
+      concept_tags:
+        items:
+          type: string
+        type: array
       createdAt:
         type: string
       explanation:
@@ -95,13 +110,24 @@ definitions:
     - mcq
     - true_false
     - fill_blank
+    - short_answer
     - speech
     type: string
     x-enum-varnames:
     - MCQ
     - TrueFalse
     - FillBlank
+    - ShortAnswer
     - Speech
+  github_com_acerowl_lockin_backend_internal_models.QuizActivity:
+    properties:
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      topic_name:
+        type: string
+    type: object
   github_com_acerowl_lockin_backend_internal_models.Status:
     enum:
     - locked
@@ -154,15 +180,37 @@ definitions:
         type: string
       currentStreak:
         type: integer
+      dailyCommitment:
+        type: integer
       deletedAt:
         type: string
       email:
+        type: string
+      goal:
         type: string
       id:
         type: string
       lastSessionDate:
         type: string
       longestStreak:
+        type: integer
+      onboardingCompleted:
+        type: boolean
+    type: object
+  github_com_acerowl_lockin_backend_internal_models.UserActivityData:
+    properties:
+      day:
+        type: string
+      lessons:
+        items:
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.LessonActivity'
+        type: array
+      quizes:
+        items:
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.QuizActivity'
+        type: array
+      total_time:
+        description: in seconds
         type: integer
     type: object
   internal_handlers.AssessmentResponse:
@@ -267,15 +315,6 @@ definitions:
         example: true
         type: boolean
     type: object
-  internal_handlers.LessonActivity:
-    properties:
-      completed_at:
-        type: string
-      created_at:
-        type: string
-      title:
-        type: string
-    type: object
   internal_handlers.LoginReq:
     properties:
       email:
@@ -285,14 +324,12 @@ definitions:
         example: supersecret
         type: string
     type: object
-  internal_handlers.QuizActivity:
+  internal_handlers.RateReviewCardReq:
     properties:
-      completed_at:
-        type: string
-      created_at:
-        type: string
-      topic_name:
-        type: string
+      quality:
+        description: 0-5 SM-2 quality score
+        example: 3
+        type: integer
     type: object
   internal_handlers.RefreshReq:
     properties:
@@ -334,6 +371,15 @@ definitions:
         example: true
         type: boolean
     type: object
+  internal_handlers.SocraticFollowUpReq:
+    properties:
+      answer:
+        example: Because momentum carries the optimizer past shallow local minima
+        type: string
+      question_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
   internal_handlers.StartSessionData:
     properties:
       questions:
@@ -346,6 +392,11 @@ definitions:
     type: object
   internal_handlers.StartSessionReq:
     properties:
+      interleave:
+        description: 'mixed-review mode: mixes types and injects due review cards
+          from other topics'
+        example: false
+        type: boolean
       lesson_id:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
@@ -392,26 +443,22 @@ definitions:
         example: true
         type: boolean
     type: object
+  internal_handlers.UpdateMeReq:
+    properties:
+      daily_commitment:
+        example: 15
+        type: integer
+      goal:
+        example: Academic Excellence
+        type: string
+      onboarding_completed:
+        example: true
+        type: boolean
+    type: object
   internal_handlers.UpdateStatusReq:
     properties:
       status:
         type: string
-    type: object
-  internal_handlers.UserActivityData:
-    properties:
-      day:
-        type: string
-      lessons:
-        items:
-          $ref: '#/definitions/internal_handlers.LessonActivity'
-        type: array
-      quizes:
-        items:
-          $ref: '#/definitions/internal_handlers.QuizActivity'
-        type: array
-      total_time:
-        description: in seconds
-        type: integer
     type: object
   internal_handlers.UserActivityInfo:
     properties:
@@ -420,7 +467,7 @@ definitions:
         type: integer
       activity:
         items:
-          $ref: '#/definitions/internal_handlers.UserActivityData'
+          $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.UserActivityData'
         type: array
       highest_streak:
         example: 10
@@ -429,6 +476,9 @@ definitions:
   internal_handlers.UserAnswer:
     properties:
       answer:
+        type: string
+      confidence:
+        description: '"low" | "med" | "high"'
         type: string
       question:
         $ref: '#/definitions/github_com_acerowl_lockin_backend_internal_models.Question'
@@ -616,6 +666,142 @@ paths:
       summary: Update module status
       tags:
       - modules
+  /reviews/{id}/rate:
+    post:
+      consumes:
+      - application/json
+      description: Applies SM-2 scheduling based on a quality score (0-5). Higher
+        is better recall.
+      parameters:
+      - description: Card UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Quality score 0-5
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.RateReviewCardReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated card with next schedule
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rate a review card
+      tags:
+      - reviews
+  /reviews/due:
+    get:
+      description: Returns the user's cards that are due for review, optionally filtered
+        by topic.
+      parameters:
+      - description: Filter by topic (optional)
+        in: query
+        name: topic_id
+        type: string
+      - description: Max number of cards to return (default 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Due review cards
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get due review cards
+      tags:
+      - reviews
+  /reviews/due/count:
+    get:
+      description: Returns the total count of review cards due right now for the user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Due count
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get number of due review cards
+      tags:
+      - reviews
+  /reviews/retention:
+    get:
+      description: Returns retention data for each topic over the last N days (default
+        7).
+      parameters:
+      - description: Number of days to look back (default 7)
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Retention series by topic
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get retention by topic over time
+      tags:
+      - reviews
+  /reviews/stats:
+    get:
+      description: Returns retention-by-interval, weak concepts, and card totals for
+        the user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Retention stats
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get retention stats
+      tags:
+      - reviews
   /sessions/{id}/complete:
     post:
       description: Marks a quiz session as completed. If answers are provided, it
@@ -646,6 +832,44 @@ paths:
       security:
       - BearerAuth: []
       summary: Complete a session
+      tags:
+      - sessions
+  /sessions/{id}/socratic:
+    post:
+      consumes:
+      - application/json
+      description: Evaluates a free-text answer conceptually and returns a "Why?"
+        follow-up the user must answer before the explanation is revealed.
+      parameters:
+      - description: Session UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: The question and the user's answer
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.SocraticFollowUpReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Socratic follow-up
+          schema:
+            $ref: '#/definitions/internal_handlers.SuccessResponse'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a Socratic follow-up on a text answer
       tags:
       - sessions
   /sessions/activity:
@@ -778,6 +1002,33 @@ paths:
       summary: Get a topic
       tags:
       - topics
+  /topics/{id}/review-cards/generate:
+    post:
+      description: Uses AI to generate spaced-repetition flashcards from the topic's
+        roadmap and inserts them into the review queue.
+      parameters:
+      - description: Topic UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Number of generated cards
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Generation error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Generate review cards for a topic
+      tags:
+      - reviews
   /topics/assessment:
     post:
       description: Generate question for assessment of user's knowledge on the topic
@@ -839,6 +1090,38 @@ paths:
       security:
       - BearerAuth: []
       summary: Get current user
+      tags:
+      - users
+    patch:
+      consumes:
+      - application/json
+      description: Updates onboarding fields (goal, daily_commitment, onboarding_completed)
+        for the authenticated user
+      parameters:
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.UpdateMeReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated user profile
+          schema:
+            $ref: '#/definitions/internal_handlers.UserResponse'
+        "400":
+          description: Invalid request payload
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update current user profile
       tags:
       - users
 securityDefinitions:

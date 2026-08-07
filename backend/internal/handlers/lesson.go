@@ -17,10 +17,11 @@ import (
 // @Router       /lessons/progress/{id} [post]
 func (h *APIHandler) Progress(c *fiber.Ctx) error {
 	lessonID := c.Params("id")
+	userIDStr := c.Locals("user_id").(string)
 
-	data, err := h.Lesson.Progress(c.Context(), lessonID)
-	if  err != nil {
-		log.Println("Error updating lesson:",err)
+	data, err := h.Lesson.Progress(c.Context(), lessonID, userIDStr)
+	if err != nil {
+		log.Println("Error updating lesson:", err)
 		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to update lesson status"})
 	}
 

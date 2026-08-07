@@ -269,6 +269,215 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/reviews/due": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the user's cards that are due for review, optionally filtered by topic.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reviews"
+                ],
+                "summary": "Get due review cards",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by topic (optional)",
+                        "name": "topic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max number of cards to return (default 20)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Due review cards",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/reviews/due/count": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the total count of review cards due right now for the user.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reviews"
+                ],
+                "summary": "Get number of due review cards",
+                "responses": {
+                    "200": {
+                        "description": "Due count",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/reviews/retention": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns retention data for each topic over the last N days (default 7).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reviews"
+                ],
+                "summary": "Get retention by topic over time",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of days to look back (default 7)",
+                        "name": "days",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Retention series by topic",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/reviews/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns retention-by-interval, weak concepts, and card totals for the user.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reviews"
+                ],
+                "summary": "Get retention stats",
+                "responses": {
+                    "200": {
+                        "description": "Retention stats",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/reviews/{id}/rate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Applies SM-2 scheduling based on a quality score (0-5). Higher is better recall.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reviews"
+                ],
+                "summary": "Rate a review card",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Card UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Quality score 0-5",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.RateReviewCardReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated card with next schedule",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/sessions/activity": {
             "get": {
                 "security": [
@@ -389,6 +598,64 @@ const docTemplate = `{
                         "description": "Completion confirmation",
                         "schema": {
                             "$ref": "#/definitions/internal_handlers.CompleteSessionResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{id}/socratic": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Evaluates a free-text answer conceptually and returns a \"Why?\" follow-up the user must answer before the explanation is revealed.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Get a Socratic follow-up on a text answer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The question and the user's answer",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.SocraticFollowUpReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Socratic follow-up",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "500": {
@@ -591,6 +858,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/topics/{id}/review-cards/generate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Uses AI to generate spaced-repetition flashcards from the topic's roadmap and inserts them into the review queue.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reviews"
+                ],
+                "summary": "Generate review cards for a topic",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Topic UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Number of generated cards",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Generation error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/users/me": {
             "get": {
                 "security": [
@@ -615,6 +923,55 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "User not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates onboarding fields (goal, daily_commitment, onboarding_completed) for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Update current user profile",
+                "parameters": [
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.UpdateMeReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated user profile",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request payload",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
@@ -655,6 +1012,23 @@ const docTemplate = `{
                     "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.Status"
                 },
                 "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_acerowl_lockin_backend_internal_models.LessonActivity": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "topic_name": {
                     "type": "string"
                 }
             }
@@ -729,6 +1103,12 @@ const docTemplate = `{
                 "answer": {
                     "type": "string"
                 },
+                "concept_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -767,14 +1147,30 @@ const docTemplate = `{
                 "mcq",
                 "true_false",
                 "fill_blank",
+                "short_answer",
                 "speech"
             ],
             "x-enum-varnames": [
                 "MCQ",
                 "TrueFalse",
                 "FillBlank",
+                "ShortAnswer",
                 "Speech"
             ]
+        },
+        "github_com_acerowl_lockin_backend_internal_models.QuizActivity": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "topic_name": {
+                    "type": "string"
+                }
+            }
         },
         "github_com_acerowl_lockin_backend_internal_models.Status": {
             "type": "string",
@@ -853,10 +1249,16 @@ const docTemplate = `{
                 "currentStreak": {
                     "type": "integer"
                 },
+                "dailyCommitment": {
+                    "type": "integer"
+                },
                 "deletedAt": {
                     "type": "string"
                 },
                 "email": {
+                    "type": "string"
+                },
+                "goal": {
                     "type": "string"
                 },
                 "id": {
@@ -866,6 +1268,33 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "longestStreak": {
+                    "type": "integer"
+                },
+                "onboardingCompleted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "github_com_acerowl_lockin_backend_internal_models.UserActivityData": {
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "string"
+                },
+                "lessons": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.LessonActivity"
+                    }
+                },
+                "quizes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.QuizActivity"
+                    }
+                },
+                "total_time": {
+                    "description": "in seconds",
                     "type": "integer"
                 }
             }
@@ -1022,20 +1451,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.LessonActivity": {
-            "type": "object",
-            "properties": {
-                "completed_at": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
         "internal_handlers.LoginReq": {
             "type": "object",
             "properties": {
@@ -1049,17 +1464,13 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.QuizActivity": {
+        "internal_handlers.RateReviewCardReq": {
             "type": "object",
             "properties": {
-                "completed_at": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "topic_name": {
-                    "type": "string"
+                "quality": {
+                    "description": "0-5 SM-2 quality score",
+                    "type": "integer",
+                    "example": 3
                 }
             }
         },
@@ -1122,6 +1533,19 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers.SocraticFollowUpReq": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "example": "Because momentum carries the optimizer past shallow local minima"
+                },
+                "question_id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            }
+        },
         "internal_handlers.StartSessionData": {
             "type": "object",
             "properties": {
@@ -1140,6 +1564,11 @@ const docTemplate = `{
         "internal_handlers.StartSessionReq": {
             "type": "object",
             "properties": {
+                "interleave": {
+                    "description": "mixed-review mode: mixes types and injects due review cards from other topics",
+                    "type": "boolean",
+                    "example": false
+                },
                 "lesson_id": {
                     "type": "string",
                     "example": "550e8400-e29b-41d4-a716-446655440000"
@@ -1207,35 +1636,28 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers.UpdateMeReq": {
+            "type": "object",
+            "properties": {
+                "daily_commitment": {
+                    "type": "integer",
+                    "example": 15
+                },
+                "goal": {
+                    "type": "string",
+                    "example": "Academic Excellence"
+                },
+                "onboarding_completed": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
         "internal_handlers.UpdateStatusReq": {
             "type": "object",
             "properties": {
                 "status": {
                     "type": "string"
-                }
-            }
-        },
-        "internal_handlers.UserActivityData": {
-            "type": "object",
-            "properties": {
-                "day": {
-                    "type": "string"
-                },
-                "lessons": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_handlers.LessonActivity"
-                    }
-                },
-                "quizes": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_handlers.QuizActivity"
-                    }
-                },
-                "total_time": {
-                    "description": "in seconds",
-                    "type": "integer"
                 }
             }
         },
@@ -1249,7 +1671,7 @@ const docTemplate = `{
                 "activity": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handlers.UserActivityData"
+                        "$ref": "#/definitions/github_com_acerowl_lockin_backend_internal_models.UserActivityData"
                     }
                 },
                 "highest_streak": {
@@ -1262,6 +1684,10 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "answer": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "description": "\"low\" | \"med\" | \"high\"",
                     "type": "string"
                 },
                 "question": {

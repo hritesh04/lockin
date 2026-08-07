@@ -1,43 +1,60 @@
-import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUserStore } from '../store/user';
+import { tokens } from "@/theme/tokens";
+import { useRouter } from "expo-router";
+import { CircleCheck, Lock } from "lucide-react-native";
+import { useRef, useState } from "react";
+import {
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useUserStore } from "../store/user";
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const GOALS = [
-  { id: 'personal', title: 'Personal Interest', desc: 'Learn something new everyday.' },
-  { id: 'academic', title: 'Academic Excellence', desc: 'Master your studies with focus.' },
-  { id: 'career', title: 'Career Growth', desc: 'Advance your professional skill set.' },
-  { id: 'mental', title: 'Mental Sharpness', desc: 'Keep your cognitive edge sharp.' },
+  {
+    id: "personal",
+    title: "Personal Interest",
+    desc: "Learn something new everyday.",
+  },
+  {
+    id: "academic",
+    title: "Academic Excellence",
+    desc: "Master your studies with focus.",
+  },
+  {
+    id: "career",
+    title: "Career Growth",
+    desc: "Advance your professional skill set.",
+  },
+  {
+    id: "mental",
+    title: "Mental Sharpness",
+    desc: "Keep your cognitive edge sharp.",
+  },
 ];
 
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
-  const completeOnboarding = useUserStore(state => state.completeOnboarding);
+  const completeOnboarding = useUserStore((state) => state.completeOnboarding);
   const router = useRouter();
-  
-  const [activeGoal, setActiveGoal] = useState<string>('career');
+
+  const [activeGoal, setActiveGoal] = useState<string>("career");
   const [activeDuration, setActiveDuration] = useState<number>(10);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const scrollRef = useRef<ScrollView>(null);
 
-  const goToSlide = (index: number) => {
-    setCurrentIndex(index);
-    scrollRef.current?.scrollTo({ y: index * SCREEN_HEIGHT, animated: true });
-  };
-
   const handleStart = () => {
     completeOnboarding(activeGoal, activeDuration);
-    router.replace('/');
+    router.replace("/");
   };
-
   const handleScroll = (event: any) => {
     const y = event.nativeEvent.contentOffset.y;
-    // adding a small offset so it switches dot smoothly
     const index = Math.round(y / SCREEN_HEIGHT);
     if (index !== currentIndex) {
       setCurrentIndex(index);
@@ -45,9 +62,15 @@ export default function OnboardingScreen() {
   };
 
   const renderDots = () => (
-    <View style={[styles.dotsContainer, { bottom: insets.bottom + 20 }]} pointerEvents="none">
-      {[0, 1, 2, 3].map(i => (
-        <View key={i} style={[styles.dot, i === currentIndex && styles.dotActive]} />
+    <View
+      style={[styles.dotsContainer, { bottom: insets.bottom + 20 }]}
+      pointerEvents="none"
+    >
+      {[0, 1, 2].map((i) => (
+        <View
+          key={i}
+          style={[styles.dot, i === currentIndex && styles.dotActive]}
+        />
       ))}
     </View>
   );
@@ -62,14 +85,23 @@ export default function OnboardingScreen() {
         scrollEventThrottle={16}
         bounces={false}
       >
-        <View style={[{ height: SCREEN_HEIGHT, paddingTop: insets.top, paddingBottom: insets.bottom }, styles.slide]}>
+        <View
+          style={[
+            {
+              height: SCREEN_HEIGHT,
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+            },
+            styles.slide,
+          ]}
+        >
           <View style={styles.headerBlock}>
             <Text style={styles.overline}>Your Journey</Text>
-            <Text style={styles.title}>What's your goal?</Text>
+            <Text style={styles.title}>What&apos;s your goal?</Text>
           </View>
 
           <View style={styles.listContainer}>
-            {GOALS.map(goal => {
+            {GOALS.map((goal) => {
               const isActive = activeGoal === goal.id;
               return (
                 <TouchableOpacity
@@ -79,15 +111,98 @@ export default function OnboardingScreen() {
                   activeOpacity={0.7}
                 >
                   <View style={styles.goalCardText}>
-                    <Text style={[styles.goalCardTitle, isActive && styles.goalCardTitleActive]}>{goal.title}</Text>
-                    <Text style={[styles.goalCardDesc, isActive && styles.goalCardDescActive]}>{goal.desc}</Text>
+                    <Text
+                      style={[
+                        styles.goalCardTitle,
+                        isActive && styles.goalCardTitleActive,
+                      ]}
+                    >
+                      {goal.title}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.goalCardDesc,
+                        isActive && styles.goalCardDescActive,
+                      ]}
+                    >
+                      {goal.desc}
+                    </Text>
                   </View>
                   {isActive && (
-                    <Feather name="check-circle" size={20} color="#0F172A" />
+                    <CircleCheck size={20} color={tokens.colors.accent} />
                   )}
                 </TouchableOpacity>
               );
             })}
+          </View>
+        </View>
+
+        <View
+          style={[
+            {
+              height: SCREEN_HEIGHT,
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+            },
+            styles.slide,
+          ]}
+        >
+          <View style={styles.headerBlock}>
+            <Text style={styles.overline}>Daily Habit</Text>
+            <Text style={styles.title}>
+              How much time can you commit each day?
+            </Text>
+          </View>
+
+          <View style={[styles.listContainer, styles.commitmentRow]}>
+            {[5, 10, 15, 30].map((min) => {
+              const isActive = activeDuration === min;
+              return (
+                <TouchableOpacity
+                  key={min}
+                  style={[styles.durPill, isActive && styles.durPillActive]}
+                  onPress={() => setActiveDuration(min)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[styles.durText, isActive && styles.durTextActive]}
+                  >
+                    {min} min
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <View
+          style={[
+            {
+              height: SCREEN_HEIGHT,
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+            },
+            styles.slide,
+          ]}
+        >
+          <View style={[styles.listContainer, { justifyContent: "center" }]}>
+            <View style={styles.centerGraphic}>
+              <View style={styles.lockCircle}>
+                <Lock size={40} color={tokens.colors.accent} />
+              </View>
+              <Text style={styles.headingCenter}>You&apos;re all set</Text>
+              <Text style={styles.subheadingCenter}>
+                A little progress every day beats a burst every month.
+                Let&apos;s lock in.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.btnPrimary}
+              onPress={handleStart}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.btnPrimaryText}>Start Learning</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -99,96 +214,29 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: tokens.colors.base,
   },
   slide: {
     width: SCREEN_WIDTH,
-    justifyContent: 'flex-start',
-  },
-  skipBtn: {
-    position: 'absolute',
-    right: 24,
-    zIndex: 10,
-    padding: 8,
-  },
-  skipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  heroTop: {
-    height: '55%',
-    width: '100%',
-    backgroundColor: '#F1F5F9', // slate-100
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconCircle: {
-    width: 140,
-    height: 140,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#94A3B8',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  slideContent: {
-    flex: 1,
-    padding: 32,
-    justifyContent: 'space-between',
-  },
-  heading: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: '#0F172A',
-    lineHeight: 40,
-    marginBottom: 16,
-    letterSpacing: -1,
-  },
-  subheading: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#64748B',
-    lineHeight: 28,
-  },
-  btnPrimary: {
-    backgroundColor: '#0F172A',
-    width: '100%',
-    paddingVertical: 18,
-    borderRadius: 100,
-    alignItems: 'center',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  btnPrimaryText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+    justifyContent: "flex-start",
   },
   headerBlock: {
     paddingTop: 64,
     paddingHorizontal: 32,
   },
   overline: {
-    fontSize: 10,
-    textTransform: 'uppercase',
+    fontSize: tokens.fontSize.xs,
+    fontFamily: tokens.fontFamily.bodyBold,
+    textTransform: "uppercase",
     letterSpacing: 2,
-    fontWeight: '800',
-    color: '#94A3B8',
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textTertiary,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontSize: tokens.fontSize["3xl"],
+    fontFamily: tokens.fontFamily.display,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
     marginTop: 8,
     letterSpacing: -0.5,
   },
@@ -198,140 +246,127 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 12,
   },
+  commitmentRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignSelf: "flex-start",
+  },
   goalCard: {
     padding: 20,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 24,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius["3xl"],
     borderWidth: 2,
-    borderColor: 'transparent',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    borderColor: "transparent",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   goalCardActive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#0F172A',
+    borderColor: tokens.colors.accent,
   },
   goalCardText: {
     flex: 1,
     paddingRight: 16,
   },
   goalCardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontSize: tokens.fontSize.xl,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
   },
-  goalCardTitleActive: {
-  },
+  goalCardTitleActive: {},
   goalCardDesc: {
-    fontSize: 14,
-    color: '#64748B',
+    fontSize: tokens.fontSize.base,
+    fontFamily: tokens.fontFamily.body,
+    color: tokens.colors.textSecondary,
     marginTop: 4,
-    fontWeight: '500',
+    fontWeight: tokens.fontWeight.medium,
   },
-  goalCardDescActive: {
-  },
-  bottomBlock: {
-    padding: 32,
-    paddingBottom: 40,
-  },
-  durationRow: {
-    marginTop: 32,
-  },
+  goalCardDescActive: {},
   durPill: {
     paddingHorizontal: 28,
     paddingVertical: 16,
-    borderRadius: 100,
+    borderRadius: tokens.radius.full,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: 'transparent',
+    borderColor: tokens.colors.borderSubtle,
+    backgroundColor: tokens.colors.surface,
   },
   durPillActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
-    elevation: 4,
+    backgroundColor: tokens.colors.accent,
+    borderColor: tokens.colors.accent,
+    boxShadow: "0 4px 12px rgba(0, 113, 227, 0.25)",
   },
   durText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#94A3B8',
+    fontSize: tokens.fontSize.lg,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textSecondary,
   },
   durTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   centerGraphic: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 32,
   },
-  clockCircle: {
-    width: 180,
-    height: 180,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  graphicText: {
-    marginTop: 32,
-    color: '#94A3B8',
-    fontSize: 15,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  slide4Center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  flameCircle: {
+  lockCircle: {
     width: 120,
     height: 120,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: "rgba(0, 113, 227, 0.08)",
     borderRadius: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 40,
   },
   headingCenter: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: '#0F172A',
-    textAlign: 'center',
+    fontSize: tokens.fontSize["4xl"],
+    fontFamily: tokens.fontFamily.display,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.colors.textPrimary,
+    textAlign: "center",
     marginBottom: 16,
     letterSpacing: -1,
   },
   subheadingCenter: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#64748B',
-    textAlign: 'center',
+    fontSize: tokens.fontSize.xl,
+    fontFamily: tokens.fontFamily.body,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.colors.textSecondary,
+    textAlign: "center",
     lineHeight: 28,
   },
+  btnPrimary: {
+    backgroundColor: tokens.colors.accent,
+    width: "100%",
+    paddingVertical: 18,
+    borderRadius: tokens.radius.full,
+    alignItems: "center",
+    boxShadow: "0 4px 12px rgba(0, 113, 227, 0.25)",
+  },
+  btnPrimaryText: {
+    color: "#FFFFFF",
+    fontSize: tokens.fontSize.xl,
+    fontFamily: tokens.fontFamily.bodyBold,
+    fontWeight: tokens.fontWeight.bold,
+  },
   dotsContainer: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
     gap: 8,
   },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: 'transparent',
+    backgroundColor: tokens.colors.textTertiary,
   },
   dotActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: tokens.colors.accent,
+    width: 24,
   },
 });

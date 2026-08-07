@@ -88,12 +88,32 @@ func (r *sessionRepository) CreateSession(ctx context.Context, sessionID, userID
 	return err
 }
 
-func (r *sessionRepository) GetQuestionInfo(ctx context.Context, questionID string) (string, string, string, error) {
-	var correct, explanation, qType string
+func (r *sessionRepository) GetSessionByID(ctx context.Context, sessionID uuid.UUID) (models.Session, error) {
+	var s models.Session
 	err := r.db.QueryRow(ctx,
-		"SELECT COALESCE(answer, ''), explanation, type FROM questions WHERE id = $1", questionID,
-	).Scan(&correct, &explanation, &qType)
-	return correct, explanation, qType, err
+		`SELECT id, user_id, topic_id, COALESCE(lesson_id::text, ''), quiz_mode, created_at, completed_at
+		 FROM sessions WHERE id = $1`,
+		sessionID,
+	).Scan(&s.ID, &s.UserID, &s.TopicID, &s.LessonID, &s.QuizMode, &s.CreatedAt, &s.CompletedAt)
+	return s, err
+}
+
+func (r *sessionRepository) GetQuestion(ctx context.Context, questionID string) (*models.Question, error) {
+	var q models.Question
+	var answer *string
+	err := r.db.QueryRow(ctx,
+		`SELECT id, COALESCE(node_id::text, ''), COALESCE(lesson_id::text, ''), index, type, question,
+		        COALESCE(answer::text, ''), COALESCE(explanation, ''), created_at
+		 FROM questions WHERE id = $1`,
+		questionID,
+	).Scan(&q.ID, &q.NodeID, &q.LessonID, &q.Index, &q.Type, &q.Question, &answer, &q.Explanation, &q.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if answer != nil && *answer != "" {
+		q.Answer = answer
+	}
+	return &q, nil
 }
 
 func (r *sessionRepository) CompleteSession(ctx context.Context, sessionID string) error {
@@ -134,4 +154,16 @@ func (r *sessionRepository) GetUserActivity(ctx context.Context, userID uuid.UUI
 		activities = append(activities, a)
 	}
 	return activities, nil
+}
+
+func (r *sessionRepository) IsUserLesson(ctx context.Context, lessonID uuid.UUID, userID uuid.UUID) bool {
+	var id uuid.UUID
+	err := r.db.QueryRow(ctx,
+		`SELECT l.id FROM lessons l
+		 JOIN modules m ON l.node_id = m.id
+		 JOIN topics t ON m.topic_id = t.id
+		 WHERE l.id = $1 AND t.user_id = $2`,
+		lessonID, userID,
+	).Scan(&id)
+	return err == nil
 }

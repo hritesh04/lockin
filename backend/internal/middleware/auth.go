@@ -1,12 +1,10 @@
 package middleware
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
+	"github.com/acerowl/lockin/backend/internal/lib"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func Protected() fiber.Handler {
@@ -21,26 +19,12 @@ func Protected() fiber.Handler {
 			return c.Status(401).JSON(fiber.Map{"error": "Invalid authorization header"})
 		}
 
-		tokenString := parts[1]
-		secret := os.Getenv("JWT_SECRET")
-
-		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method")
-			}
-			return []byte(secret), nil
-		})
-
-		if err != nil || !token.Valid {
+		userID, err := lib.ValidateToken(parts[1])
+		if err != nil {
 			return c.Status(401).JSON(fiber.Map{"error": "Invalid token"})
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			return c.Status(401).JSON(fiber.Map{"error": "Invalid token claims"})
-		}
-
-		c.Locals("user_id", claims["user_id"])
+		c.Locals("user_id", userID)
 		return c.Next()
 	}
 }

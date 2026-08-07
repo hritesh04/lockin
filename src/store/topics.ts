@@ -3,8 +3,8 @@ import { create } from 'zustand';
 export interface Topic {
   id: string;
   title: string;
-  currentTier: number;
-  familiarityLevel: string;
+  tier: number;
+  remark: string | null;
   accuracyPercent: number;
   sessionsCompleted: number;
   weakConcepts: string[];
