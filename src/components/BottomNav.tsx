@@ -7,10 +7,10 @@ import { tokens } from "../theme/tokens";
 
 interface BottomNavProps {
   onAddPress?: () => void;
-  activeScreen: string;
+  activeScreen?: string;
 }
 
-export function BottomNav({ onAddPress, activeScreen }: BottomNavProps) {
+export function BottomNav({ onAddPress, activeScreen = "" }: BottomNavProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -42,7 +42,12 @@ export function BottomNav({ onAddPress, activeScreen }: BottomNavProps) {
         <TouchableOpacity
           style={styles.fabContainer}
           activeOpacity={0.8}
-          onPress={onAddPress ?? (() => { if (activeScreen !== "home") router.replace("/"); })}
+          onPress={
+            onAddPress ??
+            (() => {
+              if (activeScreen !== "home") router.replace("/");
+            })
+          }
         >
           <View style={styles.fab}>
             <Plus size={28} color="#ffffff" />

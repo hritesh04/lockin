@@ -20,7 +20,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { LineChart } from "react-native-gifted-charts";
+import { CurveType, LineChart } from "react-native-gifted-charts";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomNav } from "../components/BottomNav";
 import {
@@ -492,23 +492,26 @@ export default function StatsScreen() {
                         data={lineProps[0].data}
                         color={lineProps[0].color}
                         dataPointsColor={lineProps[0].color}
-                        dataPointsRadius={3}
+                        dataPointsRadius={0}
                         data2={lineProps[1]?.data}
                         color2={lineProps[1]?.color}
                         dataPointsColor2={lineProps[1]?.color}
-                        dataPointsRadius2={3}
+                        dataPointsRadius2={0}
                         data3={lineProps[2]?.data}
                         color3={lineProps[2]?.color}
                         dataPointsColor3={lineProps[2]?.color}
-                        dataPointsRadius3={3}
+                        dataPointsRadius3={0}
                         data4={lineProps[3]?.data}
                         color4={lineProps[3]?.color}
                         dataPointsColor4={lineProps[3]?.color}
-                        dataPointsRadius4={3}
+                        dataPointsRadius4={0}
                         data5={lineProps[4]?.data}
                         color5={lineProps[4]?.color}
                         dataPointsColor5={lineProps[4]?.color}
-                        dataPointsRadius5={3}
+                        dataPointsRadius5={0}
+                        curved
+                        // curvature={50}
+                        curveType={CurveType.QUADRATIC}
                         yAxisLabelTexts={["0%", "25%", "50%", "75%", "100%"]}
                         yAxisTextStyle={styles.lineChartYLabel}
                         xAxisLabelTextStyle={styles.lineChartXLabel}

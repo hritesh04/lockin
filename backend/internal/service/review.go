@@ -9,19 +9,25 @@ import (
 	"time"
 
 	"github.com/acerowl/lockin/backend/internal/models"
+	"github.com/acerowl/lockin/backend/internal/repository"
 	"github.com/google/uuid"
 )
 
 // AiCardGenerator generates generative flashcards from a topic's lesson content.
 type AiCardGenerator interface {
-	GenerateReviewCards(ctx context.Context, topic string, tier int, content string, questionCount int) ([]models.ReviewCardInput, error)
+	GenerateReviewCards(ctx context.Context, topic string, tier int, content string, questionCount int, existingContext string) ([]models.ReviewCardInput, error)
 }
 
 type ReviewRepository interface {
 	BatchInsertCards(ctx context.Context, cards []models.ReviewCard) error
+	BatchInsertCardsFiltered(ctx context.Context, cards []models.ReviewCard) (int, error)
 	ListDue(ctx context.Context, userID uuid.UUID, topicID *uuid.UUID, limit int) ([]models.ReviewCard, error)
-	ListDueExcludingTopic(ctx context.Context, userID uuid.UUID, excludeTopicID *uuid.UUID, limit int) ([]models.ReviewCard, error)
+	ListByTopic(ctx context.Context, userID uuid.UUID, topicID uuid.UUID) ([]models.ReviewCard, error)
 	DueCount(ctx context.Context, userID uuid.UUID) (int, error)
+	CountByTopic(ctx context.Context, userID uuid.UUID, topicID *uuid.UUID) (int, error)
+	CountByTopicWithViewStatus(ctx context.Context, userID uuid.UUID, topicID uuid.UUID) (repository.TopicViewStatus, error)
+	GetConceptRetention(ctx context.Context, userID uuid.UUID, topicID uuid.UUID) ([]repository.ConceptRetention, error)
+	GetTopicsWithCompletedLessons(ctx context.Context) ([]repository.TopicUserID, error)
 	GetCard(ctx context.Context, id uuid.UUID) (models.ReviewCard, error)
 	UpdateSchedule(ctx context.Context, card models.ReviewCard) error
 	UpsertFromSession(ctx context.Context, card models.ReviewCard) error
@@ -31,7 +37,9 @@ type ReviewRepository interface {
 }
 
 type ReviewService interface {
-	GenerateAndStore(ctx context.Context, userID, topicID string) (int, error)
+	GenerateAndStore(ctx context.Context, userID, topicID string, targetCount int) (int, error)
+	GenerateAll(ctx context.Context, userID string, perTopic int) (int, error)
+	GenerateNightlyReviewCards(ctx context.Context) (int, error)
 	ListDue(ctx context.Context, userID string, topicID *uuid.UUID, limit int) ([]models.ReviewCard, error)
 	DueCount(ctx context.Context, userID string) (int, error)
 	Rate(ctx context.Context, cardID, userID string, quality int) (models.ReviewCard, error)
@@ -49,7 +57,84 @@ func NewReviewService(r ReviewRepository, tr TopicRepository, a AiCardGenerator)
 	return &reviewService{repo: r, topicRepo: tr, ai: a}
 }
 
-func (s *reviewService) GenerateAndStore(ctx context.Context, userID, topicID string) (int, error) {
+// ErrNoReachableLessons is returned when a topic has no completed or
+// in-progress lessons to base review cards on.
+var ErrNoReachableLessons = errors.New("complete at least one lesson before generating review cards")
+
+// buildReachableLessonDigest renders a text digest of the lessons the user has
+// actually studied (completed or in-progress), skipping locked lessons and
+// modules that have no reachable lessons.
+func buildReachableLessonDigest(roadmap *models.TopicRoadmap) string {
+	if roadmap == nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, m := range roadmap.Modules {
+		reachable := make([]models.Lesson, 0, len(m.Lessons))
+		for _, l := range m.Lessons {
+			if l.Status != models.StatusLocked {
+				reachable = append(reachable, l)
+			}
+		}
+		if len(reachable) == 0 {
+			continue
+		}
+		fmt.Fprintf(&sb, "Module: %s\n", m.Title)
+		if len(m.ConceptTags) > 0 {
+			fmt.Fprintf(&sb, "  Concept tags: %s\n", strings.Join(m.ConceptTags, ", "))
+		}
+		for _, l := range reachable {
+			fmt.Fprintf(&sb, "  - Lesson: %s — %s\n", l.Title, l.Description)
+		}
+	}
+	return sb.String()
+}
+
+func (s *reviewService) GenerateAndStore(ctx context.Context, userID, topicID string, targetCount int) (int, error) {
+	if targetCount <= 0 {
+		targetCount = 10
+	}
+
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return 0, err
+	}
+	topicUUID, err := uuid.Parse(topicID)
+	if err != nil {
+		return 0, err
+	}
+
+	// Top-up semantics: reuse existing cards and only generate the shortfall up
+	// to the target count. When the topic already has enough cards, do nothing.
+	existing, err := s.repo.CountByTopic(ctx, uid, &topicUUID)
+	if err != nil {
+		return 0, err
+	}
+	remaining := targetCount - existing
+	if remaining <= 0 {
+		return 0, nil
+	}
+
+	return s.generateCards(ctx, userID, topicID, remaining)
+}
+
+// generateCards generates exactly `count` fresh review cards for a topic and
+// persists them. It returns the number of cards created. It considers existing
+// cards' content and SM-2 data to avoid duplicates and prioritise weak areas.
+func (s *reviewService) generateCards(ctx context.Context, userID, topicID string, count int) (int, error) {
+	if count <= 0 {
+		return 0, nil
+	}
+
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return 0, err
+	}
+	topicUUID, err := uuid.Parse(topicID)
+	if err != nil {
+		return 0, err
+	}
+
 	roadmap, err := s.topicRepo.GetRoadmap(ctx, topicID, userID)
 	if err != nil {
 		return 0, err
@@ -60,18 +145,17 @@ func (s *reviewService) GenerateAndStore(ctx context.Context, userID, topicID st
 		return 0, err
 	}
 
-	var sb strings.Builder
-	for _, m := range roadmap.Modules {
-		fmt.Fprintf(&sb, "Module: %s\n", m.Title)
-		if len(m.ConceptTags) > 0 {
-			fmt.Fprintf(&sb, "  Concept tags: %s\n", strings.Join(m.ConceptTags, ", "))
-		}
-		for _, l := range m.Lessons {
-			fmt.Fprintf(&sb, "  - Lesson: %s — %s\n", l.Title, l.Description)
-		}
+	digest := buildReachableLessonDigest(roadmap)
+	if digest == "" {
+		return 0, ErrNoReachableLessons
 	}
 
-	inputs, err := s.ai.GenerateReviewCards(ctx, topic.Title, topic.Tier, sb.String(), 0)
+	// Fetch existing cards and weak concepts for smart generation
+	existingCards, _ := s.repo.ListByTopic(ctx, uid, topicUUID)
+	weakConcepts, _ := s.repo.GetConceptRetention(ctx, uid, topicUUID)
+	existingContext := buildExistingCardsContext(existingCards, weakConcepts)
+
+	inputs, err := s.ai.GenerateReviewCards(ctx, topic.Title, topic.Tier, digest, count, existingContext)
 	if err != nil {
 		return 0, err
 	}
@@ -103,10 +187,76 @@ func (s *reviewService) GenerateAndStore(ctx context.Context, userID, topicID st
 		})
 	}
 
-	if err := s.repo.BatchInsertCards(ctx, cards); err != nil {
+	// Use filtered insert to deduplicate by prompt + concept_tag
+	inserted, err := s.repo.BatchInsertCardsFiltered(ctx, cards)
+	if err != nil {
 		return 0, err
 	}
-	return len(cards), nil
+	return inserted, nil
+}
+
+// buildExistingCardsContext builds a prompt section showing existing cards and weak areas.
+func buildExistingCardsContext(cards []models.ReviewCard, weak []repository.ConceptRetention) string {
+	if len(cards) == 0 && len(weak) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	if len(cards) > 0 {
+		sb.WriteString("EXISTING REVIEW CARDS (avoid duplicating these prompts):\n")
+		for _, c := range cards {
+			tags := strings.Join(c.ConceptTags, ", ")
+			fmt.Fprintf(&sb, "- [%s] %s\n", tags, c.Prompt)
+		}
+	}
+
+	if len(weak) > 0 {
+		sb.WriteString("\nWEAK AREAS (prioritize these concepts — low ease_factor or high lapses):\n")
+		for _, w := range weak {
+			retention := 0.0
+			if w.SampleSize > 0 {
+				retention = w.AvgResult / 5.0
+			}
+			fmt.Fprintf(&sb, "- %s: ease=%.1f, retention=%.0f%%, lapses=%d\n",
+				w.Concept, w.AvgEase, retention*100, w.TotalLapses)
+		}
+	}
+
+	return sb.String()
+}
+
+// GenerateAll generates `perTopic` fresh review cards for every topic the user
+// owns, prioritizing weak concepts. Unlike the per-topic top-up, this always
+// produces new cards so tapping Mixed Review yields fresh material to review.
+// Topics without reachable lessons are skipped rather than failing the request.
+func (s *reviewService) GenerateAll(ctx context.Context, userID string, perTopic int) (int, error) {
+	if perTopic <= 0 {
+		perTopic = 5
+	}
+
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return 0, err
+	}
+
+	topics, err := s.topicRepo.GetAll(ctx, uid)
+	if err != nil {
+		return 0, err
+	}
+
+	total := 0
+	for _, t := range topics {
+		n, err := s.generateCards(ctx, userID, t.ID, perTopic)
+		if err != nil {
+			if errors.Is(err, ErrNoReachableLessons) {
+				continue
+			}
+			return total, err
+		}
+		total += n
+	}
+	return total, nil
 }
 
 func (s *reviewService) ListDue(ctx context.Context, userID string, topicID *uuid.UUID, limit int) ([]models.ReviewCard, error) {
@@ -193,4 +343,59 @@ func (s *reviewService) RetentionByTopic(ctx context.Context, userID string, day
 		return nil, err
 	}
 	return s.repo.GetRetentionByTopic(ctx, uid, days)
+}
+
+// GenerateNightlyReviewCards runs as a daily cron job at midnight UTC.
+// For each topic with completed lessons:
+//   - If no cards exist → generate 10 (first time)
+//   - If cards exist but none have been viewed (last_reviewed_at IS NULL) → skip
+//   - If cards exist and some have been viewed → top-up to 10
+func (s *reviewService) GenerateNightlyReviewCards(ctx context.Context) (int, error) {
+	topics, err := s.repo.GetTopicsWithCompletedLessons(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch topics with completed lessons: %w", err)
+	}
+
+	total := 0
+	for _, t := range topics {
+		uid, err := uuid.Parse(t.UserID)
+		if err != nil {
+			continue
+		}
+		topicUUID, err := uuid.Parse(t.TopicID)
+		if err != nil {
+			continue
+		}
+
+		status, err := s.repo.CountByTopicWithViewStatus(ctx, uid, topicUUID)
+		if err != nil {
+			continue
+		}
+
+		var n int
+		switch {
+		case status.Total == 0:
+			// First time: generate 10 cards
+			n, err = s.generateCards(ctx, t.UserID, t.TopicID, 10)
+		case status.Viewed == 0:
+			// Has cards but user hasn't viewed any yet: skip
+			continue
+		default:
+			// User has viewed cards: top-up to 10
+			remaining := 10 - status.Total
+			if remaining <= 0 {
+				continue
+			}
+			n, err = s.generateCards(ctx, t.UserID, t.TopicID, remaining)
+		}
+
+		if err != nil {
+			if errors.Is(err, ErrNoReachableLessons) {
+				continue
+			}
+			continue
+		}
+		total += n
+	}
+	return total, nil
 }

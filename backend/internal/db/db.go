@@ -68,7 +68,7 @@ func Close() {
 }
 
 func containsSSLMode(dsn string) bool {
-	for i := 0; i+8 <= len(dsn); i++ {
+	for i := 0; i+9 <= len(dsn); i++ {
 		if dsn[i:i+9] == "sslmode=" {
 			return true
 		}

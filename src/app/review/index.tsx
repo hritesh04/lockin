@@ -82,7 +82,7 @@ export default function ReviewScreen() {
             Spaced repetition keeps your knowledge sharp. Check back soon.
           </Text>
         </View>
-        <BottomNav activeScreen="home" />
+        <BottomNav />
       </View>
     );
   }
@@ -117,7 +117,7 @@ export default function ReviewScreen() {
           </Text>
         </View>
 
-        <BottomNav activeScreen="home" />
+        <BottomNav />
       </View>
     );
   }

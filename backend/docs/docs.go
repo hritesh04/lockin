@@ -347,6 +347,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/reviews/generate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Tops up every topic to a target number of review cards (default 5 per topic), prioritizing weak concepts.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reviews"
+                ],
+                "summary": "Generate review cards for all topics",
+                "parameters": [
+                    {
+                        "description": "Per-topic card target (default 5)",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.GenerateReviewCardsReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Number of generated cards",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Generation error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/reviews/retention": {
             "get": {
                 "security": [
@@ -376,6 +421,57 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/reviews/session/start": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a session row for a spaced-repetition review so it counts toward activity and streak.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Start a review session entry",
+                "parameters": [
+                    {
+                        "description": "The topic being reviewed",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.StartReviewSessionReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session ID",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.StartSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.ErrorResponse"
                         }
                     },
                     "500": {
@@ -1439,6 +1535,16 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers.GenerateReviewCardsReq": {
+            "type": "object",
+            "properties": {
+                "question_count": {
+                    "description": "target number of cards per topic (default 10)",
+                    "type": "integer",
+                    "example": 10
+                }
+            }
+        },
         "internal_handlers.GetUserActivityResponse": {
             "type": "object",
             "properties": {
@@ -1546,6 +1652,19 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers.StartReviewSessionReq": {
+            "type": "object",
+            "properties": {
+                "lesson_id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "topic_id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            }
+        },
         "internal_handlers.StartSessionData": {
             "type": "object",
             "properties": {
@@ -1564,11 +1683,6 @@ const docTemplate = `{
         "internal_handlers.StartSessionReq": {
             "type": "object",
             "properties": {
-                "interleave": {
-                    "description": "mixed-review mode: mixes types and injects due review cards from other topics",
-                    "type": "boolean",
-                    "example": false
-                },
                 "lesson_id": {
                     "type": "string",
                     "example": "550e8400-e29b-41d4-a716-446655440000"

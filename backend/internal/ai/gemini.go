@@ -103,6 +103,14 @@ func (g *GeminiClient) GenerateRoadmap(ctx context.Context, prompt string) (stri
 													Type:        genai.TypeString,
 													Description: "The question text",
 												},
+												"answer": {
+													Type:        genai.TypeString,
+													Description: "The correct answer (required for fill_blank and short_answer, ignored otherwise)",
+												},
+												"explanation": {
+													Type:        genai.TypeString,
+													Description: "A short explanation of the correct answer",
+												},
 												"options": {
 													Type: genai.TypeArray,
 													Items: &genai.Schema{
@@ -175,6 +183,14 @@ func (g *GeminiClient) GenerateTopicQuestions(ctx context.Context, prompt string
 						"question": {
 							Type:        genai.TypeString,
 							Description: "The question text",
+						},
+						"answer": {
+							Type:        genai.TypeString,
+							Description: "The correct answer (required for fill_blank and short_answer, ignored otherwise)",
+						},
+						"explanation": {
+							Type:        genai.TypeString,
+							Description: "A short explanation of the correct answer",
 						},
 						"concept_tags": {
 							Type: genai.TypeArray,
@@ -281,6 +297,14 @@ func (g *GeminiClient) GenerateAssessmentQuestions(ctx context.Context, prompt s
 							Type:        genai.TypeString,
 							Description: "The question text",
 						},
+						"answer": {
+							Type:        genai.TypeString,
+							Description: "The correct answer (required for fill_blank and short_answer, ignored otherwise)",
+						},
+						"explanation": {
+							Type:        genai.TypeString,
+							Description: "A short explanation of the correct answer",
+						},
 						"concept_tags": {
 							Type: genai.TypeArray,
 							Items: &genai.Schema{
@@ -364,20 +388,15 @@ func (g *GeminiClient) GenerateReviewCards(ctx context.Context, prompt string) (
 func (g *GeminiClient) GenerateSocraticFollowUp(ctx context.Context, prompt string) (string, error) {
 	schema := &genai.Schema{
 		Type:     genai.TypeObject,
-		Required: []string{"follow_up", "feedback", "explanation"},
+		Required: []string{"follow_up", "explanation"},
 		Properties: map[string]*genai.Schema{
 			"follow_up": {
 				Type:        genai.TypeString,
-				Description: "A follow-up prompt that probes the reasoning behind the user's answer (a \"Why?\", \"How does this relate to...?\", or \"What would happen if...?\" question). Must not reveal the correct answer.",
-			},
-			"feedback": {
-				Type:        genai.TypeString,
-				Enum:        []string{"correct", "partial", "wrong"},
-				Description: "Conceptual accuracy of the user's answer (correct/partial/wrong), not exact wording.",
+				Description: "A single field that first gives concise, honest feedback on the user's answer (what was right, what was imprecise or wrong), then asks ONE follow-up question that probes the reasoning behind the answer (a \"Why?\", \"How does this relate to...?\", or \"What would happen if...?\" question). Must not reveal the correct answer.",
 			},
 			"explanation": {
 				Type:        genai.TypeString,
-				Description: "1-2 sentences of growth-framed coaching: confirm what was right, correct any misconception, point at the follow-up.",
+				Description: "The correct answer to the original question in general, neutral form. Must not reference the user's answer or assume it was right or wrong (no \"that's right\", \"correct\", etc.).",
 			},
 		},
 	}

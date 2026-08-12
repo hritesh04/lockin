@@ -13,8 +13,19 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	// ErrInvalidSessionID is returned when a session id is not a valid UUID.
+	ErrInvalidSessionID = errors.New("invalid session id")
+	// ErrSessionNotFound is returned when no session matches the id.
+	ErrSessionNotFound = errors.New("session not found")
+	// ErrInvalidUserID is returned when a user id is not a valid UUID.
+	ErrInvalidUserID = errors.New("invalid user id")
+	// ErrInvalidTopicID is returned when a topic id is not a valid UUID.
+	ErrInvalidTopicID = errors.New("invalid topic_id")
+)
+
 type AiQuestionGenerator interface {
-	GenerateTopicQuestions(ctx context.Context, topic string, tier int, remark string, quizMode string, weakConcepts []string) ([]models.Question, error)
+	GenerateTopicQuestions(ctx context.Context, topic string, tier int, remark string, quizMode string, weakConcepts []string, content string) ([]models.Question, error)
 	EvaluateTopicSession(ctx context.Context, topic string, tier int, remark string, answers string) (int, string, error)
 	SocraticFollowUp(ctx context.Context, topic string, tier int, question string, userAnswer string) (models.SocraticFollowUp, error)
 }
@@ -25,6 +36,7 @@ type SessionRepository interface {
 	GetQuestion(ctx context.Context, questionID string) (*models.Question, error)
 	CompleteSession(ctx context.Context, sessionID string) error
 	GetUserActivity(ctx context.Context, userID uuid.UUID) ([]repository.UserSessionActivity, error)
+	GetTodayStudySeconds(ctx context.Context, userID uuid.UUID, dayStart, dayEnd time.Time) (int, error)
 	GetSessionByID(ctx context.Context, sessionID uuid.UUID) (models.Session, error)
 	IsUserLesson(ctx context.Context, lessonID uuid.UUID, userID uuid.UUID) bool
 }
@@ -41,7 +53,7 @@ func NewSessionService(r SessionRepository, tr TopicRepository, ur UserRepositor
 	return &sessionService{repo: r, topicRepo: tr, userRepo: ur, ai: a, reviewRepo: rr}
 }
 
-func (s *sessionService) StartSession(ctx context.Context, topicID uuid.UUID, lessonID *uuid.UUID, userID uuid.UUID, quizMode string, interleave bool) (uuid.UUID, []models.Question, error) {
+func (s *sessionService) StartSession(ctx context.Context, topicID uuid.UUID, lessonID *uuid.UUID, userID uuid.UUID, quizMode string) (uuid.UUID, []models.Question, error) {
 	var questions []models.Question
 	var err error
 
@@ -68,13 +80,6 @@ func (s *sessionService) StartSession(ctx context.Context, topicID uuid.UUID, le
 			remark = *topic.Remark
 		}
 
-		// Interleaved ("Mixed Review") sessions mix question types across tiers by
-		// generating with no mode restriction, then inject due review cards from
-		// other topics to break blocked practice.
-		if interleave {
-			quizMode = ""
-		}
-
 		// Adaptive difficulty: surface the user's weakest reviewed concepts so the
 		// generator can weight more questions toward them.
 		weak := []string{}
@@ -88,17 +93,17 @@ func (s *sessionService) StartSession(ctx context.Context, topicID uuid.UUID, le
 			}
 		}
 
-		questions, err = s.ai.GenerateTopicQuestions(ctx, topic.Title, topic.Tier, remark, quizMode, weak)
-		if err != nil {
-			return uuid.Nil, nil, err
+		// Scope questions to the lessons the user has actually studied
+		// (completed or in-progress). Best-effort: if the roadmap isn't ready,
+		// fall back to an unscoped generation rather than failing the session.
+		content := ""
+		if roadmap, err := s.topicRepo.GetRoadmap(ctx, topicID.String(), userID.String()); err == nil {
+			content = buildReachableLessonDigest(roadmap)
 		}
 
-		if interleave {
-			injected, err := s.reviewRepo.ListDueExcludingTopic(ctx, userID, &topicID, 5)
-			if err != nil {
-				return uuid.Nil, nil, err
-			}
-			questions = append(questions, reviewCardsToQuestions(injected)...)
+		questions, err = s.ai.GenerateTopicQuestions(ctx, topic.Title, topic.Tier, remark, quizMode, weak, content)
+		if err != nil {
+			return uuid.Nil, nil, err
 		}
 	}
 
@@ -111,37 +116,17 @@ func (s *sessionService) StartSession(ctx context.Context, topicID uuid.UUID, le
 	return sessionID, questions, nil
 }
 
-// reviewCardsToQuestions converts due review cards into session questions so an
-// interleaved session can mix in material from other topics. They use fill_blank
-// semantics (free-text recall, no Socratic follow-up).
-func reviewCardsToQuestions(cards []models.ReviewCard) []models.Question {
-	out := make([]models.Question, 0, len(cards))
-	for i, c := range cards {
-		answer := c.Answer
-		out = append(out, models.Question{
-			ID:          c.ID,
-			Type:        models.FillBlank,
-			Index:       i + 1,
-			Question:    c.Prompt,
-			Answer:      &answer,
-			Explanation: c.Answer,
-			ConceptTags: c.ConceptTags,
-		})
-	}
-	return out
-}
-
 func (s *sessionService) CompleteSession(ctx context.Context, sessionID string, answers string, topicID string, userID string) error {
 	sid, err := uuid.Parse(sessionID)
 	if err != nil {
-		return errors.New("invalid session id")
+		return ErrInvalidSessionID
 	}
 	session, err := s.repo.GetSessionByID(ctx, sid)
 	if err != nil {
-		return errors.New("session not found")
+		return ErrSessionNotFound
 	}
 	if session.UserID != userID {
-		return errors.New("session not found")
+		return ErrSessionNotFound
 	}
 
 	if answers != "" && topicID != "" {
@@ -166,108 +151,97 @@ func (s *sessionService) CompleteSession(ctx context.Context, sessionID string, 
 		}
 	}
 
-	// Update Streak logic based on daily commitment goal
-	user, err := s.userRepo.GetUserByID(ctx, userID)
-	if err == nil && user.DailyCommitment != nil && *user.DailyCommitment > 0 {
-		now := time.Now()
-		goalSeconds := *user.DailyCommitment * 60
-
-		// Get activity for the last 365 days to calculate streak
-		parsedID, err := uuid.Parse(userID)
-		if err != nil {
-			return err
-		}
-		activity, err := s.repo.GetUserActivity(ctx, parsedID)
-		if err == nil {
-			newCurrent, newLongest := computeStreakWithCommitment(activity, goalSeconds, now, user.LongestStreak)
-			_ = s.userRepo.UpdateStreak(ctx, userID, newCurrent, newLongest, now)
-		}
-	} else if err == nil {
-		// Fallback to old logic if no daily commitment set
-		now := time.Now()
-		newCurrent, newLongest := computeLegacyStreak(now, user.LastSessionDate, user.CurrentStreak, user.LongestStreak)
-		_ = s.userRepo.UpdateStreak(ctx, userID, newCurrent, newLongest, now)
-	}
-
-	// Auto-enqueue answered questions into the spaced-repetition review queue.
-	if err := s.enqueueAnswers(ctx, sessionID, userID, answers); err != nil {
+	if err := s.repo.CompleteSession(ctx, sessionID); err != nil {
 		return err
 	}
 
-	return s.repo.CompleteSession(ctx, sessionID)
+	// Update streak after the session is marked complete so today's qualifying
+	// time includes the session that just finished.
+	s.updateStreak(ctx, userID)
+	return nil
 }
 
-func computeStreakWithCommitment(activity []repository.UserSessionActivity, goalSeconds int, now time.Time, currentLongest int) (int, int) {
-	dailyTime := make(map[string]int)
-	for _, r := range activity {
-		if r.CompletedAt != nil {
-			day := r.CreatedAt.Format("2006-01-02")
-			duration := int(r.CompletedAt.Sub(r.CreatedAt).Seconds())
-			if duration > 0 {
-				dailyTime[day] += duration
-			}
-		}
+// updateStreak advances the streak once today qualifies: cumulative study time
+// meets the daily commitment goal, or any completed session when no goal is
+// set. The streak is left untouched otherwise; the UI reports an expired
+// streak (0) at read time once a whole qualifying day is skipped.
+func (s *sessionService) updateStreak(ctx context.Context, userID string) {
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return
 	}
 
-	// Current streak: consecutive days from today backwards meeting the goal.
-	newCurrent := 0
-	today := now.UTC().Truncate(24 * time.Hour)
-	for i := 0; i < 365; i++ {
-		checkDate := today.AddDate(0, 0, -i)
-		dateStr := checkDate.Format("2006-01-02")
-		timeSec := dailyTime[dateStr]
-		if timeSec >= goalSeconds {
-			newCurrent++
-		} else {
-			break
+	now := time.Now()
+	todayStart := now.UTC().Truncate(24 * time.Hour)
+
+	qualifies := true
+	if user.DailyCommitment != nil && *user.DailyCommitment > 0 {
+		goalSeconds := *user.DailyCommitment * 60
+		parsedID, err := uuid.Parse(userID)
+		if err != nil {
+			return
 		}
+		todaySeconds, err := s.repo.GetTodayStudySeconds(ctx, parsedID, todayStart, todayStart.AddDate(0, 0, 1))
+		if err != nil {
+			return
+		}
+		qualifies = todaySeconds >= goalSeconds
 	}
 
-	// Longest streak: run of consecutive qualifying days anywhere in history.
-	newLongest := currentLongest
-	tempStreak := 0
-	dates := make([]string, 0, len(dailyTime))
-	for d := range dailyTime {
-		dates = append(dates, d)
+	if !qualifies {
+		return
 	}
-	sort.Strings(dates)
-	for _, dateStr := range dates {
-		if dailyTime[dateStr] >= goalSeconds {
-			tempStreak++
-			if tempStreak > newLongest {
-				newLongest = tempStreak
-			}
-		} else {
-			tempStreak = 0
-		}
-	}
-	return newCurrent, newLongest
+
+	newCurrent, newLongest := computeIncrementalStreak(now, user.StreakDate, user.CurrentStreak, user.LongestStreak)
+	_ = s.userRepo.UpdateStreak(ctx, userID, newCurrent, newLongest, now, &todayStart)
 }
 
-func computeLegacyStreak(now time.Time, lastSessionDate *time.Time, currentStreak, longestStreak int) (int, int) {
-	if lastSessionDate == nil {
-		return 1, 1
+// computeIncrementalStreak updates the streak based on the last qualifying day.
+// A day qualifies when its cumulative study time meets the daily commitment
+// goal. The streak is only advanced once a day qualifies; a skipped qualifying
+// day (gap) resets the current streak to 1 on the next qualifying day.
+func computeIncrementalStreak(now time.Time, streakDate *time.Time, currentStreak, longestStreak int) (int, int) {
+	if streakDate == nil {
+		newLongest := longestStreak
+		if newLongest < 1 {
+			newLongest = 1
+		}
+		return 1, newLongest
 	}
 
-	lastDate := lastSessionDate.UTC().Truncate(24 * time.Hour)
+	lastDate := streakDate.UTC().Truncate(24 * time.Hour)
 	today := now.UTC().Truncate(24 * time.Hour)
-	diff := today.Sub(lastDate).Hours()
 
 	newCurrent := currentStreak
 	newLongest := longestStreak
 	switch {
-	case diff == 24:
-		// Consecutive day
+	case lastDate.Equal(today):
+		// Today already counted, don't double-increment.
+	case lastDate.Equal(today.AddDate(0, 0, -1)):
+		// Consecutive qualifying day.
 		newCurrent++
 		if newCurrent > newLongest {
 			newLongest = newCurrent
 		}
-	case diff >= 48:
-		// Gap detected
+	default:
+		// Gap detected: streak broken, restart at 1.
 		newCurrent = 1
 	}
-	// If same day (diff == 0), don't increment
 	return newCurrent, newLongest
+}
+
+// expiredCurrentStreak returns 0 once a whole qualifying day has been skipped,
+// otherwise the stored current streak (which may still be mid-day pending).
+func expiredCurrentStreak(streakDate *time.Time, currentStreak int, now time.Time) int {
+	if streakDate == nil {
+		return currentStreak
+	}
+	lastDate := streakDate.UTC().Truncate(24 * time.Hour)
+	today := now.UTC().Truncate(24 * time.Hour)
+	if lastDate.Before(today.AddDate(0, 0, -1)) {
+		return 0
+	}
+	return currentStreak
 }
 
 // SocraticFollowUp generates a conceptual "Why?" follow-up for a free-text answer.
@@ -410,6 +384,32 @@ func correctOptionAnswer(q models.Question) string {
 		}
 	}
 	return ""
+}
+
+// StartReviewSession creates a session row for a spaced-repetition review so the
+// review counts toward the user's activity and streak. It returns the new session id.
+func (s *sessionService) StartReviewSession(ctx context.Context, userID, topicID string, lessonID *string) (uuid.UUID, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return uuid.Nil, ErrInvalidUserID
+	}
+	tid, err := uuid.Parse(topicID)
+	if err != nil {
+		return uuid.Nil, ErrInvalidTopicID
+	}
+
+	var lid *uuid.UUID
+	if lessonID != nil && *lessonID != "" {
+		if parsed, err := uuid.Parse(*lessonID); err == nil {
+			lid = &parsed
+		}
+	}
+
+	sessionID := uuid.New()
+	if err := s.repo.CreateSession(ctx, sessionID, uid, tid, lid, "review"); err != nil {
+		return uuid.Nil, err
+	}
+	return sessionID, nil
 }
 
 func (s *sessionService) GetUserActivity(ctx context.Context, userID uuid.UUID) ([]models.UserActivityData, error) {

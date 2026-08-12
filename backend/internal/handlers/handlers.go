@@ -36,10 +36,11 @@ type TopicService interface {
 }
 
 type SessionService interface {
-	StartSession(ctx context.Context, topicID uuid.UUID, lessonID *uuid.UUID, userID uuid.UUID, quizMode string, interleave bool) (uuid.UUID, []models.Question, error)
+	StartSession(ctx context.Context, topicID uuid.UUID, lessonID *uuid.UUID, userID uuid.UUID, quizMode string) (uuid.UUID, []models.Question, error)
 	CompleteSession(ctx context.Context, sessionID string, answers string, topicID string, userID string) error
 	GetUserActivity(ctx context.Context, userID uuid.UUID) ([]models.UserActivityData, error)
 	SocraticFollowUp(ctx context.Context, sessionID, questionID, answer, userID string) (models.SocraticFollowUp, error)
+	StartReviewSession(ctx context.Context, userID, topicID string, lessonID *string) (uuid.UUID, error)
 }
 
 type AIService interface {

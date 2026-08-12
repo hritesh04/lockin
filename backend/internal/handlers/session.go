@@ -2,17 +2,19 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 
+	"github.com/acerowl/lockin/backend/internal/service"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
 // StartSessionReq is the request body for starting a session
 type StartSessionReq struct {
-	TopicID    string `json:"topic_id"  example:"550e8400-e29b-41d4-a716-446655440000"`
-	LessonID   string `json:"lesson_id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	QuizMode   string `json:"quiz_mode" example:"options"` // options, text, lesson
-	Interleave bool   `json:"interleave" example:"false"`  // mixed-review mode: mixes types and injects due review cards from other topics
+	TopicID  string `json:"topic_id"  example:"550e8400-e29b-41d4-a716-446655440000"`
+	LessonID string `json:"lesson_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	QuizMode string `json:"quiz_mode" example:"options"` // options, text, lesson
 }
 
 type CompleteSessionReq struct {
@@ -24,6 +26,56 @@ type CompleteSessionReq struct {
 type SocraticFollowUpReq struct {
 	QuestionID string `json:"question_id" example:"550e8400-e29b-41d4-a716-446655440000"`
 	Answer     string `json:"answer" example:"Because momentum carries the optimizer past shallow local minima"`
+}
+
+// StartReviewSessionReq is the request body for creating a review session entry.
+type StartReviewSessionReq struct {
+	TopicID  string `json:"topic_id"  example:"550e8400-e29b-41d4-a716-446655440000"`
+	LessonID string `json:"lesson_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+}
+
+// StartReviewSession godoc
+// @Summary      Start a review session entry
+// @Description  Creates a session row for a spaced-repetition review so it counts toward activity and streak.
+// @Tags         sessions
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body  body      StartReviewSessionReq  true  "The topic being reviewed"
+// @Success      200   {object}  StartSessionResponse   "Session ID"
+// @Failure      400   {object}  ErrorResponse          "Invalid input"
+// @Failure      500   {object}  ErrorResponse          "Internal server error"
+// @Router       /reviews/session/start [post]
+func (h *APIHandler) StartReviewSession(c *fiber.Ctx) error {
+	userIDStr := c.Locals("user_id").(string)
+
+	var req StartReviewSessionReq
+	if err := c.BodyParser(&req); err != nil || req.TopicID == "" {
+		log.Printf("StartReviewSession: invalid payload user=%s body=%s err=%v", userIDStr, c.Body(), err)
+		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid request payload"})
+	}
+
+	var lessonID *string
+	if req.LessonID != "" {
+		lessonID = &req.LessonID
+	}
+
+	sessionID, err := h.Session.StartReviewSession(c.Context(), userIDStr, req.TopicID, lessonID)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidUserID) || errors.Is(err, service.ErrInvalidTopicID) {
+			log.Printf("StartReviewSession: validation error user=%s topic=%s err=%v", userIDStr, req.TopicID, err)
+			return c.Status(400).JSON(fiber.Map{"success": false, "error": err.Error()})
+		}
+		log.Printf("StartReviewSession: internal error user=%s topic=%s err=%v", userIDStr, req.TopicID, err)
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to start review session"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"session_id": sessionID,
+		},
+	})
 }
 
 type TopicAssessmentEvaluationReq struct {
@@ -74,7 +126,7 @@ func (h *APIHandler) StartSession(c *fiber.Ctx) error {
 		quizMode = "options"
 	}
 
-	sessionID, questions, err := h.Session.StartSession(c.Context(), topicID, lessonID, userID, quizMode, req.Interleave)
+	sessionID, questions, err := h.Session.StartSession(c.Context(), topicID, lessonID, userID, quizMode)
 	if err != nil {
 		if err.Error() == "Not enough questions. Generation might be pending." {
 			return c.Status(400).JSON(fiber.Map{"success": false, "error": err.Error()})
@@ -117,7 +169,14 @@ func (h *APIHandler) CompleteSession(c *fiber.Ctx) error {
 
 	err := h.Session.CompleteSession(c.Context(), sessionID, answersJSON, req.TopicID, userIDStr)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed completing session"})
+		switch {
+		case errors.Is(err, service.ErrInvalidSessionID):
+			return c.Status(400).JSON(fiber.Map{"success": false, "error": "Invalid session id"})
+		case errors.Is(err, service.ErrSessionNotFound):
+			return c.Status(404).JSON(fiber.Map{"success": false, "error": "Session not found"})
+		default:
+			return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed completing session"})
+		}
 	}
 
 	return c.JSON(fiber.Map{

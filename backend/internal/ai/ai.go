@@ -76,6 +76,8 @@ type TopicQuestionAI struct {
 	Index       int               `json:"index"`
 	Type        string            `json:"type"`
 	Question    string            `json:"question"`
+	Answer      string            `json:"answer,omitempty"`
+	Explanation string            `json:"explanation,omitempty"`
 	ConceptTags []string          `json:"concept_tags,omitempty"`
 	Options     []RoadmapOptionAI `json:"options"`
 }
@@ -101,7 +103,6 @@ type ReviewCardsAIResponse struct {
 // SocraticFollowUpAIResponse is the top-level AI response for a Socratic follow-up.
 type SocraticFollowUpAIResponse struct {
 	FollowUp    string `json:"follow_up"`
-	Feedback    string `json:"feedback"`
 	Explanation string `json:"explanation"`
 }
 
@@ -186,11 +187,15 @@ func (g *Generator) storeRoadmap(ctx context.Context, topicID string, roadmap mo
 				questionID := uuid.New()
 
 				// For MCQ/true_false the answer is determined by is_correct on options.
-				// For fill_blank/short_answer, answer can be nil.
+				// For fill_blank/short_answer, answer comes from the AI response.
+				var answer any
+				if quiz.Answer != nil && strings.TrimSpace(*quiz.Answer) != "" {
+					answer = strings.TrimSpace(*quiz.Answer)
+				}
 				_, err := tx.Exec(ctx,
-					`INSERT INTO questions (id, node_id, lesson_id, index, type, question)
-					 VALUES ($1, $2, $3, $4, $5, $6)`,
-					questionID, moduleID, lessonID, quiz.Index, quiz.Type, quiz.Question,
+					`INSERT INTO questions (id, node_id, lesson_id, index, type, question, answer, explanation)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+					questionID, moduleID, lessonID, quiz.Index, quiz.Type, quiz.Question, answer, quiz.Explanation,
 				)
 				if err != nil {
 					return fmt.Errorf("failed inserting question: %w", err)
@@ -215,8 +220,8 @@ func (g *Generator) storeRoadmap(ctx context.Context, topicID string, roadmap mo
 	return tx.Commit(ctx)
 }
 
-func (g *Generator) GenerateTopicQuestions(ctx context.Context, topic string, tier int, remark string, quizMode string, weakConcepts []string) ([]models.Question, error) {
-	prompt := g.buildTopicSessionPrompt(topic, tier, remark, quizMode, weakConcepts)
+func (g *Generator) GenerateTopicQuestions(ctx context.Context, topic string, tier int, remark string, quizMode string, weakConcepts []string, content string) ([]models.Question, error) {
+	prompt := g.buildTopicSessionPrompt(topic, tier, remark, quizMode, weakConcepts, content)
 	start := time.Now()
 	log.Println("Generating Topic Questions for topic: ", topic, " Starting at ", start)
 	res, err := g.Provider.GenerateTopicQuestions(ctx, prompt)
@@ -233,11 +238,18 @@ func (g *Generator) GenerateTopicQuestions(ctx context.Context, topic string, ti
 
 	questions := make([]models.Question, len(aiRes.Questions))
 	for i, q := range aiRes.Questions {
+		var answerPtr *string
+		if strings.TrimSpace(q.Answer) != "" {
+			answer := strings.TrimSpace(q.Answer)
+			answerPtr = &answer
+		}
 		questions[i] = models.Question{
 			ID:          uuid.New().String(),
 			Index:       q.Index,
 			Type:        models.QuestionType(q.Type),
 			Question:    q.Question,
+			Answer:      answerPtr,
+			Explanation: q.Explanation,
 			ConceptTags: q.ConceptTags,
 		}
 		for _, opt := range q.Options {
@@ -319,8 +331,8 @@ func (g *Generator) EvaluateTopicAssessment(ctx context.Context, topic string, r
 
 // GenerateReviewCards asks the LLM to produce generative flashcards for a topic,
 // scaled to the user's tier and seeded with the topic's lesson summaries and concept tags.
-func (g *Generator) GenerateReviewCards(ctx context.Context, topic string, tier int, content string, questionCount int) ([]models.ReviewCardInput, error) {
-	prompt := g.buildReviewCardsPrompt(topic, tier, content, questionCount)
+func (g *Generator) GenerateReviewCards(ctx context.Context, topic string, tier int, content string, questionCount int, existingContext string) ([]models.ReviewCardInput, error) {
+	prompt := g.buildReviewCardsPrompt(topic, tier, content, questionCount, existingContext)
 	start := time.Now()
 	log.Println("Generating Review Cards for topic: ", topic, " Starting at ", start)
 	res, err := g.Provider.GenerateReviewCards(ctx, prompt)
@@ -376,7 +388,6 @@ func (g *Generator) SocraticFollowUp(ctx context.Context, topic string, tier int
 
 	return models.SocraticFollowUp{
 		FollowUp:    strings.TrimSpace(aiRes.FollowUp),
-		Feedback:    strings.TrimSpace(aiRes.Feedback),
 		Explanation: strings.TrimSpace(aiRes.Explanation),
 	}, nil
 }

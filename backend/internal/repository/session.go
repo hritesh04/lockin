@@ -156,6 +156,17 @@ func (r *sessionRepository) GetUserActivity(ctx context.Context, userID uuid.UUI
 	return activities, nil
 }
 
+func (r *sessionRepository) GetTodayStudySeconds(ctx context.Context, userID uuid.UUID, dayStart, dayEnd time.Time) (int, error) {
+	var seconds int
+	err := r.db.QueryRow(ctx,
+		`SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (completed_at - created_at)))::int, 0)
+		 FROM sessions
+		 WHERE user_id = $1 AND created_at >= $2 AND created_at < $3 AND completed_at IS NOT NULL`,
+		userID, dayStart, dayEnd,
+	).Scan(&seconds)
+	return seconds, err
+}
+
 func (r *sessionRepository) IsUserLesson(ctx context.Context, lessonID uuid.UUID, userID uuid.UUID) bool {
 	var id uuid.UUID
 	err := r.db.QueryRow(ctx,

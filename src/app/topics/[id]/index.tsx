@@ -12,7 +12,6 @@ import {
   Play,
   RefreshCcw,
   RotateCcw,
-  Shuffle,
   SquareCheck,
 } from "lucide-react-native";
 import { useCallback, useState } from "react";
@@ -99,10 +98,10 @@ export default function TopicDetailScreen() {
     );
   }
 
-  const handleStartSession = (mode: "options" | "text" | "mixed") => {
+  const handleStartSession = (mode: "options" | "text") => {
     router.push({
       pathname: `/topics/${id}/session` as any,
-      params: mode === "mixed" ? { interleave: "true" } : { quizMode: mode },
+      params: { quizMode: mode },
     });
   };
 
@@ -152,7 +151,7 @@ export default function TopicDetailScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.replace("/")}
           style={styles.backButton}
         >
           <ChevronLeft size={20} color={tokens.colors.textPrimary} />
@@ -212,23 +211,6 @@ export default function TopicDetailScreen() {
                 <Text style={styles.modeName}>Deep Dive</Text>
                 <Text style={styles.modeDesc}>
                   Short Answer & Fill-in-blanks
-                </Text>
-              </View>
-              <ChevronRight size={18} color={tokens.colors.textTertiary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modeCard}
-              onPress={() => handleStartSession("mixed")}
-              activeOpacity={0.7}
-            >
-              <View style={styles.modeIconBox}>
-                <Shuffle size={20} color={tokens.colors.accent} />
-              </View>
-              <View style={styles.modeContent}>
-                <Text style={styles.modeName}>Mixed Review</Text>
-                <Text style={styles.modeDesc}>
-                  All question types + your due cards from other topics
                 </Text>
               </View>
               <ChevronRight size={18} color={tokens.colors.textTertiary} />
@@ -402,7 +384,7 @@ export default function TopicDetailScreen() {
                             disabled={lesson.status === "locked"}
                             onPress={() => {
                               if (lesson.status === "locked") return;
-                              router.push(`/topics/${id}/${lesson.id}`);
+                              router.replace(`/topics/${id}/${lesson.id}`);
                             }}
                             activeOpacity={0.7}
                           >

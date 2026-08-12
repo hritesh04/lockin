@@ -8,6 +8,7 @@ import { Book, RefreshCcw, Timer, X, Zap } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -21,6 +22,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   createTopic,
+  generateAllReviewCards,
   generateTopicAssessment,
   getActivity,
   getMe,
@@ -54,8 +56,9 @@ export default function HomeScreen() {
   const setTopics = useTopicsStore((state) => state.setTopics);
   const hydrateUser = useUserStore((state) => state.hydrateFromServer);
   const setActivityHistory = useUserStore((state) => state.setActivityHistory);
-  const dueCount = useReviewsStore((state) => state.dueCount);
-  const refreshDueCount = useReviewsStore((state) => state.refreshDueCount);
+  const dueCards = useReviewsStore((state) => state.dueCards);
+  const loadDue = useReviewsStore((state) => state.loadDue);
+  const dueCount = dueCards.length;
 
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
@@ -64,24 +67,26 @@ export default function HomeScreen() {
     "beginner" | "intermediate" | "advanced"
   >("beginner");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [reviewGenerating, setReviewGenerating] = useState(false);
 
-  const dbActivityHistory: ("active" | "inactive")[] = Array(7)
-    .fill("inactive")
-    .map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      const dayStr = d.toISOString().split("T")[0];
-      const hasActivity = activityHistory.find((a) => a.day === dayStr);
-      return hasActivity ? "active" : "inactive";
-    });
-
-  const daysActive = dbActivityHistory.filter((d) => d === "active").length;
-
-  // Calculate today's time spent from activity history
   const todayStr = new Date().toISOString().split("T")[0];
   const todayData = activityHistory.find((a) => a.day === todayStr);
   const todayTimeSec = todayData?.total_time || 0;
   const todayTimeMin = Math.round(todayTimeSec / 60);
+  const todayMet = dailyCommitment
+    ? todayTimeSec >= dailyCommitment * 60
+    : false;
+
+  const pastDaysActive: boolean[] = Array.from({ length: 6 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dayStr = d.toISOString().split("T")[0];
+    return activityHistory.some(
+      (a) => a.day === dayStr && a.total_time >= (dailyCommitment || 0) * 60
+    );
+  });
+
+  const daysActive = pastDaysActive.filter(Boolean).length + (todayMet ? 1 : 0);
 
   const token = useAuthStore((state) => state.token);
 
@@ -103,7 +108,7 @@ export default function HomeScreen() {
             setActivityHistory(activityInfo.activity || []);
           }
 
-          refreshDueCount();
+          loadDue();
 
           const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
             id: t.id,
@@ -227,6 +232,24 @@ export default function HomeScreen() {
     }
   };
 
+  const handleMixedReview = async () => {
+    if (reviewGenerating) return;
+    setReviewGenerating(true);
+    try {
+      await generateAllReviewCards();
+      await loadDue();
+    } catch (e) {
+      console.warn("Failed to generate mixed review cards:", e);
+      Alert.alert(
+        "Mixed Review",
+        "Couldn't generate review cards right now. Make sure your topics have completed lessons, then try again."
+      );
+    } finally {
+      setReviewGenerating(false);
+    }
+    router.push("/review" as any);
+  };
+
   const renderEmptyState = () => (
     <View style={styles.emptyCard}>
       <View style={styles.emptyIconBox}>
@@ -292,9 +315,36 @@ export default function HomeScreen() {
           streakCount={streakCount}
           dailyCommitment={dailyCommitment}
           daysActive={daysActive}
+          pastDaysActive={pastDaysActive}
+          todayMet={todayMet}
         />
 
         <StatRow stats={[...(reviewsDueStats || []), ...todayStats]} />
+
+        <TouchableOpacity
+          style={styles.mixedReviewCard}
+          activeOpacity={0.8}
+          onPress={handleMixedReview}
+          disabled={reviewGenerating}
+        >
+          <View style={styles.reviewIconBox}>
+            {reviewGenerating ? (
+              <ActivityIndicator size="small" color={tokens.colors.accent} />
+            ) : (
+              <RefreshCcw size={18} color={tokens.colors.accent} />
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.reviewCardTitle}>
+              {reviewGenerating ? "Generating review cards..." : "Mixed Review"}
+            </Text>
+            <Text style={styles.reviewCardSub}>
+              {reviewGenerating
+                ? "Prioritizing your weak concepts"
+                : "Fresh cards for every topic — 5 each, focused on weak spots"}
+            </Text>
+          </View>
+        </TouchableOpacity>
 
         {heroTopic ? (
           <TopicCard
@@ -506,6 +556,16 @@ const styles = StyleSheet.create({
     gap: tokens.spacing[3],
     borderWidth: 1,
     borderColor: tokens.colors.border,
+  },
+  mixedReviewCard: {
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.xl,
+    padding: tokens.spacing[4],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.spacing[3],
+    borderWidth: 1,
+    borderColor: "rgba(0, 113, 227, 0.2)",
   },
   reviewIconBox: {
     width: 40,

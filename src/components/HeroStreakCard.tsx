@@ -7,12 +7,16 @@ interface HeroStreakCardProps {
   streakCount: number;
   dailyCommitment: number | null;
   daysActive: number;
+  pastDaysActive: boolean[];
+  todayMet: boolean;
 }
 
 export function HeroStreakCard({
   streakCount,
   dailyCommitment,
   daysActive,
+  pastDaysActive,
+  todayMet,
 }: HeroStreakCardProps) {
   return (
     <View style={styles.card}>
@@ -31,7 +35,7 @@ export function HeroStreakCard({
           <Text style={styles.days}>{daysActive} / 7 DAYS</Text>
         </View>
       </View>
-      <StreakDots total={7} active={daysActive} />
+      <StreakDots days={pastDaysActive} todayMet={todayMet} />
     </View>
   );
 }

@@ -44,7 +44,6 @@ export type UserAnswer = {
 
 export type ApiSocraticFollowUp = {
   follow_up: string;
-  feedback: 'correct' | 'partial' | 'wrong';
   explanation: string;
 };
 
@@ -292,7 +291,7 @@ export async function getRoadmap(topicId: string, signal?: AbortSignal): Promise
 }
 
 export async function startSession(
-  params: { topic_id: string; lesson_id?: string; quiz_mode?: string; interleave?: boolean },
+  params: { topic_id: string; lesson_id?: string; quiz_mode?: string },
   signal?: AbortSignal
 ): Promise<{ session_id: string; questions: Question[] }> {
   const { data } = await apiClient.post<{ success: boolean; data: { session_id: string; questions: ApiQuestionRaw[] } }>(
@@ -394,11 +393,37 @@ const asReviewCards = (d: unknown): ApiReviewCard[] => {
 
 export async function generateReviewCards(
   topicId: string,
+  questionCount?: number,
   signal?: AbortSignal
 ): Promise<{ generated: number }> {
   const { data } = await apiClient.post<{ success: boolean; data: { generated: number } }>(
     `/topics/${topicId}/review-cards/generate`,
-    undefined,
+    questionCount ? { question_count: questionCount } : undefined,
+    { signal }
+  );
+  return data.data;
+}
+
+export async function generateAllReviewCards(
+  perTopic?: number,
+  signal?: AbortSignal
+): Promise<{ generated: number }> {
+  const { data } = await apiClient.post<{ success: boolean; data: { generated: number } }>(
+    '/reviews/generate',
+    perTopic ? { question_count: perTopic } : undefined,
+    { signal }
+  );
+  return data.data;
+}
+
+export async function startReviewSession(
+  topicId: string,
+  lessonId?: string | null,
+  signal?: AbortSignal
+): Promise<{ session_id: string }> {
+  const { data } = await apiClient.post<{ success: boolean; data: { session_id: string } }>(
+    '/reviews/session/start',
+    { topic_id: topicId, lesson_id: lessonId ?? undefined },
     { signal }
   );
   return data.data;
@@ -413,14 +438,6 @@ export async function getDueReviews(
     signal,
   });
   return asReviewCards(data.data);
-}
-
-export async function getReviewDueCount(signal?: AbortSignal): Promise<number> {
-  const { data } = await apiClient.get<{ success: boolean; data: { due_count: number } }>(
-    '/reviews/due/count',
-    { signal }
-  );
-  return data.data?.due_count ?? 0;
 }
 
 export async function rateReviewCard(

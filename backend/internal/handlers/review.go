@@ -2,19 +2,21 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
 	"github.com/acerowl/lockin/backend/internal/models"
+	"github.com/acerowl/lockin/backend/internal/service"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
 // ReviewService is the service interface the review handlers depend on.
 type ReviewService interface {
-	GenerateAndStore(ctx context.Context, userID, topicID string) (int, error)
+	GenerateAndStore(ctx context.Context, userID, topicID string, targetCount int) (int, error)
+	GenerateAll(ctx context.Context, userID string, perTopic int) (int, error)
 	ListDue(ctx context.Context, userID string, topicID *uuid.UUID, limit int) ([]models.ReviewCard, error)
-	DueCount(ctx context.Context, userID string) (int, error)
 	Rate(ctx context.Context, cardID, userID string, quality int) (models.ReviewCard, error)
 	Stats(ctx context.Context, userID string) (models.ReviewStats, error)
 	RetentionByTopic(ctx context.Context, userID string, days int) ([]models.TopicRetentionSeries, error)
@@ -23,6 +25,11 @@ type ReviewService interface {
 // RateReviewCardReq is the request body for rating a review card.
 type RateReviewCardReq struct {
 	Quality int `json:"quality" example:"3"` // 0-5 SM-2 quality score
+}
+
+// GenerateReviewCardsReq is the request body for generating review cards.
+type GenerateReviewCardsReq struct {
+	QuestionCount int `json:"question_count" example:"10"` // target number of cards per topic (default 10)
 }
 
 // GenerateReviewCards godoc
@@ -39,7 +46,43 @@ func (h *APIHandler) GenerateReviewCards(c *fiber.Ctx) error {
 	userIDStr := c.Locals("user_id").(string)
 	topicID := c.Params("id")
 
-	generated, err := h.Review.GenerateAndStore(c.Context(), userIDStr, topicID)
+	var req GenerateReviewCardsReq
+	_ = c.BodyParser(&req)
+
+	generated, err := h.Review.GenerateAndStore(c.Context(), userIDStr, topicID, req.QuestionCount)
+	if err != nil {
+		if errors.Is(err, service.ErrNoReachableLessons) {
+			return c.Status(400).JSON(fiber.Map{"success": false, "error": err.Error()})
+		}
+		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to generate review cards"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"generated": generated,
+		},
+	})
+}
+
+// GenerateAllReviewCards godoc
+// @Summary      Generate review cards for all topics
+// @Description  Tops up every topic to a target number of review cards (default 5 per topic), prioritizing weak concepts.
+// @Tags         reviews
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body body      GenerateReviewCardsReq  false  "Per-topic card target (default 5)"
+// @Success      200  {object}  map[string]interface{}  "Number of generated cards"
+// @Failure      500  {object}  ErrorResponse           "Generation error"
+// @Router       /reviews/generate [post]
+func (h *APIHandler) GenerateAllReviewCards(c *fiber.Ctx) error {
+	userIDStr := c.Locals("user_id").(string)
+
+	var req GenerateReviewCardsReq
+	_ = c.BodyParser(&req)
+
+	generated, err := h.Review.GenerateAll(c.Context(), userIDStr, req.QuestionCount)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to generate review cards"})
 	}
@@ -91,31 +134,6 @@ func (h *APIHandler) GetDueReviews(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data":    cards,
-	})
-}
-
-// GetReviewDueCount godoc
-// @Summary      Get number of due review cards
-// @Description  Returns the total count of review cards due right now for the user.
-// @Tags         reviews
-// @Produce      json
-// @Security     BearerAuth
-// @Success      200  {object}  map[string]interface{}  "Due count"
-// @Failure      500  {object}  ErrorResponse           "Internal server error"
-// @Router       /reviews/due/count [get]
-func (h *APIHandler) GetReviewDueCount(c *fiber.Ctx) error {
-	userIDStr := c.Locals("user_id").(string)
-
-	count, err := h.Review.DueCount(c.Context(), userIDStr)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to count due cards"})
-	}
-
-	return c.JSON(fiber.Map{
-		"success": true,
-		"data": fiber.Map{
-			"due_count": count,
-		},
 	})
 }
 

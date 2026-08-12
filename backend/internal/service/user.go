@@ -19,7 +19,7 @@ type UserRepository interface {
 	GetUserByID(ctx context.Context, id string) (models.User, error)
 	SaveRefreshToken(ctx context.Context, userID string, refreshToken string) error
 	CheckUserRefreshToken(ctx context.Context, userID string, refreshToken string) (bool, error)
-	UpdateStreak(ctx context.Context, userID string, current, longest int, lastDate time.Time) error
+	UpdateStreak(ctx context.Context, userID string, current, longest int, lastDate time.Time, streakDate *time.Time) error
 	UpdateOnboarding(ctx context.Context, userID string, goal *string, dailyCommitment *int, onboardingCompleted bool) error
 }
 
@@ -98,7 +98,12 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (st
 }
 
 func (s *authService) GetMe(ctx context.Context, userID string) (models.User, error) {
-	return s.repo.GetUserByID(ctx, userID)
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return models.User{}, err
+	}
+	user.CurrentStreak = expiredCurrentStreak(user.StreakDate, user.CurrentStreak, time.Now())
+	return user, nil
 }
 
 func (s *authService) UpdateOnboarding(ctx context.Context, userID string, goal *string, dailyCommitment *int, onboardingCompleted bool) error {

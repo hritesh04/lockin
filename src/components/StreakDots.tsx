@@ -1,40 +1,40 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { tokens } from '../theme/tokens';
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { tokens } from "../theme/tokens";
 
 interface StreakDotsProps {
-  total: number;
-  active: number;
+  days: boolean[];
+  todayMet: boolean;
 }
 
-export function StreakDots({ total, active }: StreakDotsProps) {
+export function StreakDots({ days, todayMet }: StreakDotsProps) {
   return (
     <View style={styles.dots}>
-      {Array.from({ length: total }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.dot,
-            i < active && styles.dotActive,
-          ]}
-        />
+      {days.map((active, i) => (
+        <View key={i} style={[styles.dot, active && styles.dotActive]} />
       ))}
+      <View
+        style={[styles.dot, todayMet ? styles.dotActive : styles.dotToday]}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   dots: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 6,
   },
   dot: {
     width: 28,
     height: 6,
     borderRadius: tokens.radius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
   },
   dotActive: {
     backgroundColor: tokens.colors.accent,
+  },
+  dotToday: {
+    backgroundColor: tokens.colors.textSecondary,
   },
 });

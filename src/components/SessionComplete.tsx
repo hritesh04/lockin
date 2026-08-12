@@ -1,10 +1,5 @@
 import { tokens } from "@/theme/tokens";
-import {
-  BookOpen,
-  RefreshCcw,
-  Target,
-  Zap,
-} from "lucide-react-native";
+import { BookOpen, Target } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
@@ -17,7 +12,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { UserAnswer } from "../store/session";
-import { useUserStore } from "../store/user";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -104,12 +98,11 @@ interface Props {
   total: number;
   onContinue: () => void;
   onDashboard: () => void;
-  onReviewNow?: () => void;
-  showReviewQueue?: boolean;
   userAnswers?: UserAnswer[];
   hasLesson?: boolean;
   nextLessonId?: string;
   lessonId?: string;
+  completedLessons?: number;
 }
 
 export default function SessionComplete({
@@ -119,15 +112,13 @@ export default function SessionComplete({
   total,
   onContinue,
   onDashboard,
-  onReviewNow,
-  showReviewQueue,
   userAnswers,
   hasLesson,
   nextLessonId,
   lessonId,
+  completedLessons,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const streakCount = useUserStore((s) => s.streakCount);
 
   const springAnim = useRef(new Animated.Value(0.3)).current;
   const springOpAnim = useRef(new Animated.Value(0)).current;
@@ -208,7 +199,7 @@ export default function SessionComplete({
   });
 
   const percent = total > 0 ? Math.round((score / total) * 100) : 0;
-  const displayStreak = streakCount;
+  const displayLessons = completedLessons ?? 0;
 
   const strategyText =
     percent >= 80
@@ -283,33 +274,25 @@ export default function SessionComplete({
             ]}
           >
             <View style={styles.streakContainer}>
-              <Zap
-                size={48}
+              {/* <BookOpen
+                size={32}
                 color={tokens.colors.accent}
                 style={styles.badgeIcon}
-              />
-              <Text style={styles.streakNumber}>{displayStreak}</Text>
-              <Text style={styles.streakLabel}>Day Streak</Text>
+              /> */}
+              <Text style={styles.streakNumber}>{displayLessons}</Text>
+              <Text style={styles.streakLabel} numberOfLines={2}>
+                Lessons Completed
+              </Text>
             </View>
           </Animated.View>
         </View>
 
         <Animated.View style={[styles.headingRow, slideUpStyle(slideAnim1)]}>
-          <Text style={styles.title}>STREAK SAVED!</Text>
+          <Text style={styles.title}>SESSION COMPLETED!</Text>
         </Animated.View>
         <Animated.View style={[styles.headingRow, slideUpStyle(slideAnim2)]}>
           <Text style={styles.subtitle}>{strategyText}</Text>
         </Animated.View>
-
-        {showReviewQueue && (
-          <Animated.View style={[styles.queueNote, slideUpStyle(slideAnim3)]}>
-            <RefreshCcw size={16} color={tokens.colors.accent} />
-            <Text style={styles.queueNoteText}>
-              Added to your review queue — the ones you missed become review
-              cards for tomorrow. Effort now pays off later.
-            </Text>
-          </Animated.View>
-        )}
 
         {calibrationText && (
           <Animated.View
@@ -331,16 +314,6 @@ export default function SessionComplete({
           { paddingBottom: Math.max(insets.bottom, 24) },
         ]}
       >
-        {showReviewQueue && onReviewNow && (
-          <TouchableOpacity
-            style={styles.reviewBtn}
-            activeOpacity={0.8}
-            onPress={onReviewNow}
-          >
-            <RefreshCcw size={14} color="#fff" />
-            <Text style={styles.reviewBtnText}>Review This Topic</Text>
-          </TouchableOpacity>
-        )}
         <TouchableOpacity
           style={styles.continueBtn}
           activeOpacity={0.8}
@@ -419,6 +392,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 4,
     borderColor: tokens.colors.surface,
+    overflow: "hidden",
     // @ts-ignore
     boxShadow: tokens.shadow.lg,
   },
@@ -427,6 +401,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: -10,
+    width: 120,
   },
   badgeIcon: {
     marginBottom: 2,
@@ -445,6 +420,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: tokens.colors.accent,
     letterSpacing: 1.5,
+    textAlign: "center",
   },
   headingRow: {
     alignItems: "center",
@@ -464,26 +440,6 @@ const styles = StyleSheet.create({
     fontWeight: tokens.fontWeight.medium,
     color: tokens.colors.textSecondary,
     textAlign: "center",
-  },
-  queueNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: tokens.colors.surface,
-    borderWidth: 1,
-    borderColor: tokens.colors.border,
-    borderRadius: tokens.radius["2xl"],
-    padding: 16,
-    marginTop: 24,
-    maxWidth: 320,
-  },
-  queueNoteText: {
-    flex: 1,
-    fontSize: tokens.fontSize.sm,
-    fontFamily: tokens.fontFamily.bodyMedium,
-    fontWeight: tokens.fontWeight.semibold,
-    color: tokens.colors.textPrimary,
-    lineHeight: 20,
   },
   calibrationCard: {
     backgroundColor: tokens.colors.surface,
@@ -538,22 +494,6 @@ const styles = StyleSheet.create({
   },
   continueBtnText: {
     color: "#FFFFFF",
-    fontSize: tokens.fontSize.lg,
-    fontFamily: tokens.fontFamily.bodyBold,
-    fontWeight: tokens.fontWeight.bold,
-  },
-  reviewBtn: {
-    backgroundColor: tokens.colors.darkBase,
-    borderRadius: tokens.radius.full,
-    paddingVertical: 16,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 8,
-  },
-  reviewBtnText: {
-    color: "#fff",
     fontSize: tokens.fontSize.lg,
     fontFamily: tokens.fontFamily.bodyBold,
     fontWeight: tokens.fontWeight.bold,

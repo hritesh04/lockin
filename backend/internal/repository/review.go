@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/google/uuid"
@@ -78,49 +79,25 @@ func (r *reviewRepository) ListDue(ctx context.Context, userID uuid.UUID, topicI
 	return cards, rows.Err()
 }
 
-// ListDueExcludingTopic returns due review cards that are NOT from the given topic,
-// used by interleaved sessions to inject review material from other topics.
-func (r *reviewRepository) ListDueExcludingTopic(ctx context.Context, userID uuid.UUID, excludeTopicID *uuid.UUID, limit int) ([]models.ReviewCard, error) {
-	query := `SELECT id, user_id, topic_id, lesson_id, source_question_id, prompt, answer, concept_tags,
-	              ease_factor, interval_days, repetitions, lapses, last_result, due_at, last_reviewed_at, created_at
-	          FROM review_cards
-	          WHERE user_id = $1 AND due_at <= NOW()`
-	args := []any{userID}
-	if excludeTopicID != nil {
-		query += ` AND (topic_id IS NULL OR topic_id <> $2)`
-		args = append(args, *excludeTopicID)
-	}
-	query += ` ORDER BY due_at ASC`
-	if limit > 0 {
-		args = append(args, limit)
-		query += fmt.Sprintf(` LIMIT $%d`, len(args))
-	}
-
-	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	cards := []models.ReviewCard{}
-	for rows.Next() {
-		var c models.ReviewCard
-		if err := rows.Scan(&c.ID, &c.UserID, &c.TopicID, &c.LessonID, &c.SourceQuestionID, &c.Prompt, &c.Answer,
-			&c.ConceptTags, &c.EaseFactor, &c.IntervalDays, &c.Repetitions, &c.Lapses, &c.LastResult,
-			&c.DueAt, &c.LastReviewedAt, &c.CreatedAt); err != nil {
-			return nil, err
-		}
-		cards = append(cards, c)
-	}
-	return cards, rows.Err()
-}
-
 func (r *reviewRepository) DueCount(ctx context.Context, userID uuid.UUID) (int, error) {
 	var count int
 	err := r.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM review_cards WHERE user_id = $1 AND due_at <= NOW()`,
 		userID,
 	).Scan(&count)
+	return count, err
+}
+
+// CountByTopic returns the total number of review cards a user has for a topic.
+func (r *reviewRepository) CountByTopic(ctx context.Context, userID uuid.UUID, topicID *uuid.UUID) (int, error) {
+	query := `SELECT COUNT(*) FROM review_cards WHERE user_id = $1`
+	args := []any{userID}
+	if topicID != nil {
+		query += ` AND topic_id = $2`
+		args = append(args, *topicID)
+	}
+	var count int
+	err := r.db.QueryRow(ctx, query, args...).Scan(&count)
 	return count, err
 }
 
@@ -188,7 +165,7 @@ func (r *reviewRepository) GetStats(ctx context.Context, userID uuid.UUID) (mode
 		   WHERE user_id = $1
 		   GROUP BY concept
 		   HAVING COUNT(*) FILTER (WHERE last_result > 0) > 0
-		      AND (COUNT(*) FILTER (WHERE last_result >= 3)::float / COUNT(*) FILTER (WHERE last_result > 0)::float) < 0.75
+		      AND (COUNT(*) FILTER (WHERE last_result >= 3)::float / COUNT(*) FILTER (WHERE last_result > 0)::float) <= 0.5
 		   ORDER BY pct_correct ASC
 		   LIMIT 10
 		 ) concept_data
@@ -342,4 +319,174 @@ func (r *reviewRepository) UpsertFromSession(ctx context.Context, card models.Re
 		card.ConceptTags, card.EaseFactor, card.IntervalDays, card.Repetitions, card.Lapses, card.LastResult, card.DueAt,
 	)
 	return err
+}
+
+// ListByTopic returns all review cards for a user + topic pair.
+func (r *reviewRepository) ListByTopic(ctx context.Context, userID uuid.UUID, topicID uuid.UUID) ([]models.ReviewCard, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, user_id, topic_id, lesson_id, source_question_id, prompt, answer, concept_tags,
+		        ease_factor, interval_days, repetitions, lapses, last_result, due_at, last_reviewed_at, created_at
+		 FROM review_cards
+		 WHERE user_id = $1 AND topic_id = $2
+		 ORDER BY created_at DESC`,
+		userID, topicID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cards := []models.ReviewCard{}
+	for rows.Next() {
+		var c models.ReviewCard
+		if err := rows.Scan(&c.ID, &c.UserID, &c.TopicID, &c.LessonID, &c.SourceQuestionID, &c.Prompt, &c.Answer,
+			&c.ConceptTags, &c.EaseFactor, &c.IntervalDays, &c.Repetitions, &c.Lapses, &c.LastResult,
+			&c.DueAt, &c.LastReviewedAt, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
+}
+
+// ConceptRetention holds per-concept SM-2 and retention data for smart generation.
+type ConceptRetention struct {
+	Concept      string
+	AvgEase      float64
+	AvgResult    float64
+	TotalLapses  int
+	SampleSize   int
+}
+
+// GetConceptRetention returns per-concept retention data for a user + topic.
+func (r *reviewRepository) GetConceptRetention(ctx context.Context, userID uuid.UUID, topicID uuid.UUID) ([]ConceptRetention, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT
+			UNNEST(concept_tags) AS concept,
+			AVG(ease_factor)::float AS avg_ease,
+			AVG(last_result)::float AS avg_result,
+			SUM(lapses)::int AS total_lapses,
+			COUNT(*)::int AS sample_size
+		 FROM review_cards
+		 WHERE user_id = $1 AND topic_id = $2 AND concept_tags != '{}'
+		 GROUP BY concept
+		 ORDER BY avg_ease ASC, total_lapses DESC`,
+		userID, topicID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ConceptRetention
+	for rows.Next() {
+		var cr ConceptRetention
+		if err := rows.Scan(&cr.Concept, &cr.AvgEase, &cr.AvgResult, &cr.TotalLapses, &cr.SampleSize); err != nil {
+			return nil, err
+		}
+		result = append(result, cr)
+	}
+	return result, rows.Err()
+}
+
+// TopicUserID is a (user_id, topic_id) pair for the nightly cron.
+type TopicUserID struct {
+	UserID  string
+	TopicID string
+}
+
+// GetTopicsWithCompletedLessons returns all (user_id, topic_id) pairs where the
+// topic has at least one completed lesson.
+func (r *reviewRepository) GetTopicsWithCompletedLessons(ctx context.Context) ([]TopicUserID, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT DISTINCT t.user_id::text, t.id::text AS topic_id
+		 FROM topics t
+		 JOIN modules m ON m.topic_id = t.id
+		 JOIN lessons l ON l.node_id = m.id
+		 WHERE l.status = 'completed' AND t.deleted_at IS NULL`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []TopicUserID
+	for rows.Next() {
+		var tu TopicUserID
+		if err := rows.Scan(&tu.UserID, &tu.TopicID); err != nil {
+			return nil, err
+		}
+		result = append(result, tu)
+	}
+	return result, rows.Err()
+}
+
+// TopicViewStatus holds total card count and viewed card count for a topic.
+type TopicViewStatus struct {
+	Total  int
+	Viewed int
+}
+
+// CountByTopicWithViewStatus returns the total number of cards and the number
+// that have been viewed (last_reviewed_at IS NOT NULL) for a user + topic.
+func (r *reviewRepository) CountByTopicWithViewStatus(ctx context.Context, userID uuid.UUID, topicID uuid.UUID) (TopicViewStatus, error) {
+	var status TopicViewStatus
+	err := r.db.QueryRow(ctx,
+		`SELECT
+			COUNT(*)::int AS total,
+			COUNT(*) FILTER (WHERE last_reviewed_at IS NOT NULL)::int AS viewed
+		 FROM review_cards
+		 WHERE user_id = $1 AND topic_id = $2`,
+		userID, topicID,
+	).Scan(&status.Total, &status.Viewed)
+	return status, err
+}
+
+// BatchInsertCardsFiltered inserts only cards whose prompt+concept_tag combo
+// does not already exist for the user+topic. Returns the number actually inserted.
+func (r *reviewRepository) BatchInsertCardsFiltered(ctx context.Context, cards []models.ReviewCard) (int, error) {
+	if len(cards) == 0 {
+		return 0, nil
+	}
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	inserted := 0
+	for _, c := range cards {
+		// Check for existing prompt + concept_tag
+		var exists bool
+		tags := strings.Join(c.ConceptTags, ",")
+		err := tx.QueryRow(ctx,
+			`SELECT EXISTS(
+				SELECT 1 FROM review_cards
+				WHERE user_id = $1 AND topic_id = $2 AND prompt = $3 AND concept_tags::text = $4
+			)`,
+			c.UserID, c.TopicID, c.Prompt, tags,
+		).Scan(&exists)
+		if err != nil {
+			return 0, fmt.Errorf("failed checking duplicate: %w", err)
+		}
+		if exists {
+			continue
+		}
+
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO review_cards
+				(id, user_id, topic_id, lesson_id, source_question_id, prompt, answer, concept_tags, ease_factor, interval_days, repetitions, lapses, last_result, due_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			c.ID, c.UserID, c.TopicID, c.LessonID, c.SourceQuestionID, c.Prompt, c.Answer,
+			c.ConceptTags, c.EaseFactor, c.IntervalDays, c.Repetitions, c.Lapses, c.LastResult, c.DueAt,
+		); err != nil {
+			return 0, fmt.Errorf("failed inserting review card: %w", err)
+		}
+		inserted++
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return inserted, nil
 }

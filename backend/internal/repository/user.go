@@ -29,18 +29,18 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (mode
 	var user models.User
 	var passwordHash string
 	err := r.db.QueryRow(ctx,
-		"SELECT id, email, password_hash, current_streak, longest_streak, last_session_date, goal, daily_commitment, onboarding_completed, created_at FROM users WHERE email = $1 AND deleted_at IS NULL",
+		"SELECT id, email, password_hash, current_streak, longest_streak, last_session_date, streak_date, goal, daily_commitment, onboarding_completed, created_at FROM users WHERE email = $1 AND deleted_at IS NULL",
 		email,
-	).Scan(&user.ID, &user.Email, &passwordHash, &user.CurrentStreak, &user.LongestStreak, &user.LastSessionDate, &user.Goal, &user.DailyCommitment, &user.OnboardingCompleted, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &passwordHash, &user.CurrentStreak, &user.LongestStreak, &user.LastSessionDate, &user.StreakDate, &user.Goal, &user.DailyCommitment, &user.OnboardingCompleted, &user.CreatedAt)
 	return user, passwordHash, err
 }
 
 func (r *userRepository) GetUserByID(ctx context.Context, id string) (models.User, error) {
 	var user models.User
 	err := r.db.QueryRow(ctx,
-		"SELECT id, email, current_streak, longest_streak, last_session_date, goal, daily_commitment, onboarding_completed, created_at FROM users WHERE id = $1 AND deleted_at IS NULL",
+		"SELECT id, email, current_streak, longest_streak, last_session_date, streak_date, goal, daily_commitment, onboarding_completed, created_at FROM users WHERE id = $1 AND deleted_at IS NULL",
 		id,
-	).Scan(&user.ID, &user.Email, &user.CurrentStreak, &user.LongestStreak, &user.LastSessionDate, &user.Goal, &user.DailyCommitment, &user.OnboardingCompleted, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.CurrentStreak, &user.LongestStreak, &user.LastSessionDate, &user.StreakDate, &user.Goal, &user.DailyCommitment, &user.OnboardingCompleted, &user.CreatedAt)
 	return user, err
 }
 
@@ -60,10 +60,10 @@ func (r *userRepository) SaveRefreshToken(ctx context.Context, userID string, re
 	return err
 }
 
-func (r *userRepository) UpdateStreak(ctx context.Context, userID string, current, longest int, lastDate time.Time) error {
+func (r *userRepository) UpdateStreak(ctx context.Context, userID string, current, longest int, lastDate time.Time, streakDate *time.Time) error {
 	_, err := r.db.Exec(ctx,
-		"UPDATE users SET current_streak = $1, longest_streak = $2, last_session_date = $3 WHERE id = $4",
-		current, longest, lastDate, userID,
+		"UPDATE users SET current_streak = $1, longest_streak = $2, last_session_date = $3, streak_date = $4 WHERE id = $5",
+		current, longest, lastDate, streakDate, userID,
 	)
 	return err
 }

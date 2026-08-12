@@ -159,7 +159,7 @@ export default function LessonScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.replace(`/topics/${id}`)}
           style={styles.iconButton}
         >
           <X size={20} color={tokens.colors.textPrimary} />
@@ -179,8 +179,8 @@ export default function LessonScreen() {
       >
         <Text style={styles.lessonDescription}>{lesson.description}</Text>
 
-        {sections.map((section: any) => (
-          <View style={styles.contentCard}>
+        {sections.map((section: any, idx: number) => (
+          <View key={idx} style={styles.contentCard}>
             {section.heading ? (
               <Text style={styles.sectionHeading}>{section.heading}</Text>
             ) : (

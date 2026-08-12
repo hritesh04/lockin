@@ -50,5 +50,4 @@ skills-lock.json
 # backend build artifacts
 backend/bin/
 backend/lockin_android_arm64
-docs/
 outputs/

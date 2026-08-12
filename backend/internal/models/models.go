@@ -28,7 +28,6 @@ const (
 	QuizModeMCQ    QuizMode = "mcq"
 	QuizModeText   QuizMode = "text"
 	QuizModeSpeech QuizMode = "speech"
-	QuizModeMixed  QuizMode = "mixed"
 )
 
 type Roadmap struct {
@@ -104,6 +103,7 @@ type User struct {
 	CurrentStreak       int        `json:"currentStreak" db:"current_streak"`
 	LongestStreak       int        `json:"longestStreak" db:"longest_streak"`
 	LastSessionDate     *time.Time `json:"lastSessionDate,omitempty" db:"last_session_date"`
+	StreakDate          *time.Time `json:"-" db:"streak_date"`
 	Goal                *string    `json:"goal,omitempty" db:"goal"`
 	DailyCommitment     *int       `json:"dailyCommitment,omitempty" db:"daily_commitment"`
 	OnboardingCompleted bool       `json:"onboardingCompleted" db:"onboarding_completed"`
@@ -162,7 +162,6 @@ type ReviewCardInput struct {
 // SocraticFollowUp is the AI-generated Socratic follow-up for a text answer.
 type SocraticFollowUp struct {
 	FollowUp    string `json:"follow_up"`
-	Feedback    string `json:"feedback"` // "correct" | "partial" | "wrong"
 	Explanation string `json:"explanation"`
 }
 

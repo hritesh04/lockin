@@ -1,18 +1,22 @@
 import { create } from 'zustand';
-import { getDueReviews, getReviewDueCount, rateReviewCard, type ApiReviewCard } from '../lib/api';
+import {
+  completeSession,
+  getDueReviews,
+  rateReviewCard,
+  startReviewSession,
+  type ApiReviewCard,
+} from '../lib/api';
 import { useSessionStore, Question } from './session';
 
 interface ReviewsState {
   dueCards: ApiReviewCard[];
   currentIndex: number;
   ratings: Record<string, number>;
-  dueCount: number;
   loading: boolean;
   completed: boolean;
   loadDue: (topicId?: string) => Promise<void>;
   rate: (quality: number) => Promise<void>;
   reset: () => void;
-  refreshDueCount: () => Promise<void>;
 }
 
 function convertReviewCardToQuestion(card: ApiReviewCard): Question {
@@ -30,7 +34,6 @@ export const useReviewsStore = create<ReviewsState>((set, get) => ({
   dueCards: [],
   currentIndex: 0,
   ratings: {},
-  dueCount: 0,
   loading: false,
   completed: false,
 
@@ -39,18 +42,27 @@ export const useReviewsStore = create<ReviewsState>((set, get) => ({
     try {
       const cards = await getDueReviews(topicId ? { topic_id: topicId } : {});
       set({ dueCards: cards, currentIndex: 0, ratings: {}, completed: cards.length === 0, loading: false });
-      
+
       if (cards.length > 0) {
         const questions = cards.map(convertReviewCardToQuestion);
-        useSessionStore.getState().startSession({
-          sessionId: `review-${Date.now()}`,
-          type: 'review',
-          topicId: cards[0].topicId,
-          topicTitle: undefined,
-          lessonId: cards[0].lessonId ?? undefined,
-          lessonTitle: undefined,
-          questions,
-        });
+        try {
+          const res = await startReviewSession(cards[0].topicId, cards[0].lessonId);
+          useSessionStore.getState().startSession({
+            sessionId: res.session_id,
+            type: 'review',
+            topicId: cards[0].topicId,
+            topicTitle: undefined,
+            lessonId: cards[0].lessonId ?? undefined,
+            lessonTitle: undefined,
+            questions,
+          });
+        } catch (e) {
+          console.warn(
+            'Failed to create review session entry',
+            { topicId: cards[0].topicId, lessonId: cards[0].lessonId },
+            e
+          );
+        }
       }
     } catch (e) {
       console.warn('Failed to load due reviews', e);
@@ -74,24 +86,25 @@ export const useReviewsStore = create<ReviewsState>((set, get) => ({
     const remaining = dueCards.filter((c) => c.id !== card.id);
     if (remaining.length === 0) {
       set({ dueCards: [], currentIndex: 0, completed: true });
+      const activeSessionId = useSessionStore.getState().activeSessionId;
+      const isServerSession = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        activeSessionId ?? ''
+      );
+      if (isServerSession) {
+        try {
+          await completeSession(activeSessionId as string);
+        } catch (e) {
+          console.warn('Failed to complete review session', e);
+        }
+      }
       useSessionStore.getState().completeSession();
     } else {
       set({ dueCards: remaining, currentIndex: 0 });
     }
-    await get().refreshDueCount();
   },
 
   reset: () => {
     set({ dueCards: [], currentIndex: 0, ratings: {}, completed: false, loading: false });
     useSessionStore.getState().resetSession();
-  },
-
-  refreshDueCount: async () => {
-    try {
-      const count = await getReviewDueCount();
-      set({ dueCount: count });
-    } catch (e) {
-      console.warn('Failed to refresh review due count', e);
-    }
   },
 }));

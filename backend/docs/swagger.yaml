@@ -307,6 +307,13 @@ definitions:
         example: user@example.com
         type: string
     type: object
+  internal_handlers.GenerateReviewCardsReq:
+    properties:
+      question_count:
+        description: target number of cards per topic (default 10)
+        example: 10
+        type: integer
+    type: object
   internal_handlers.GetUserActivityResponse:
     properties:
       data:
@@ -380,6 +387,15 @@ definitions:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
     type: object
+  internal_handlers.StartReviewSessionReq:
+    properties:
+      lesson_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      topic_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
   internal_handlers.StartSessionData:
     properties:
       questions:
@@ -392,11 +408,6 @@ definitions:
     type: object
   internal_handlers.StartSessionReq:
     properties:
-      interleave:
-        description: 'mixed-review mode: mixes types and injects due review cards
-          from other topics'
-        example: false
-        type: boolean
       lesson_id:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
@@ -755,6 +766,35 @@ paths:
       summary: Get number of due review cards
       tags:
       - reviews
+  /reviews/generate:
+    post:
+      consumes:
+      - application/json
+      description: Tops up every topic to a target number of review cards (default
+        5 per topic), prioritizing weak concepts.
+      parameters:
+      - description: Per-topic card target (default 5)
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/internal_handlers.GenerateReviewCardsReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Number of generated cards
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Generation error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Generate review cards for all topics
+      tags:
+      - reviews
   /reviews/retention:
     get:
       description: Returns retention data for each topic over the last N days (default
@@ -781,6 +821,39 @@ paths:
       summary: Get retention by topic over time
       tags:
       - reviews
+  /reviews/session/start:
+    post:
+      consumes:
+      - application/json
+      description: Creates a session row for a spaced-repetition review so it counts
+        toward activity and streak.
+      parameters:
+      - description: The topic being reviewed
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers.StartReviewSessionReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session ID
+          schema:
+            $ref: '#/definitions/internal_handlers.StartSessionResponse'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Start a review session entry
+      tags:
+      - sessions
   /reviews/stats:
     get:
       description: Returns retention-by-interval, weak concepts, and card totals for
