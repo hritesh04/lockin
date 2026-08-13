@@ -5,6 +5,7 @@ import { ChevronLeft, LogOut, Target, Timer } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -57,6 +58,7 @@ export default function ProfileScreen() {
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       console.error("Failed to save profile:", e);
+      Alert.alert("Error", "Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -165,24 +167,29 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.saveBtn, (!effectiveGoal || saving) && styles.saveBtnDisabled]}
-          onPress={handleSave}
-          disabled={!effectiveGoal || saving}
-        >
-          {saving ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.saveBtnText}>
-              {saved ? "Saved!" : "Save Changes"}
-            </Text>
-          )}
-        </TouchableOpacity>
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={[
+              styles.saveBtn,
+              (!effectiveGoal || saving) && styles.saveBtnDisabled,
+            ]}
+            onPress={handleSave}
+            disabled={!effectiveGoal || saving}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.saveBtnText}>
+                {saved ? "Saved!" : "Save Changes"}
+              </Text>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <LogOut size={16} color="#ef4444" />
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <LogOut size={16} color="#ef4444" />
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -201,13 +208,16 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border,
-    backgroundColor: tokens.colors.surface,
   },
   backBtn: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.full,
+    borderWidth: 2,
+    borderColor: tokens.colors.border,
   },
   headerTitle: {
     fontSize: tokens.fontSize.lg,
@@ -217,7 +227,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 24,
-    paddingBottom: 60,
     gap: 28,
   },
   avatarSection: {
@@ -244,7 +253,7 @@ const styles = StyleSheet.create({
     color: tokens.colors.textSecondary,
   },
   section: {
-    gap: 10,
+    gap: 8,
   },
   sectionHeader: {
     flexDirection: "row",

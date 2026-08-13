@@ -1,8 +1,8 @@
-import { getRoadmap, updateProgress } from "@/lib/api";
+import { getRoadmap } from "@/lib/api";
 import { tokens } from "@/theme/tokens";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { X } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -11,33 +11,34 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { EnrichedMarkdownText } from "react-native-enriched-markdown";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLessonStore } from "../../../../store/lessons";
 import { useModuleStore } from "../../../../store/modules";
 import { useSessionStore } from "../../../../store/session";
 
-function splitSections(content: string): { heading?: string; body: string }[] {
-  const blocks = content
-    .split(/\n{2,}/)
-    .map((b) => b.trim())
-    .filter(Boolean);
+// function splitSections(content: string): { heading?: string; body: string }[] {
+//   const blocks = content
+//     .split(/\n{2,}/)
+//     .map((b) => b.trim())
+//     .filter(Boolean);
 
-  const sections: { heading?: string; body: string }[] = [];
-  for (const block of blocks) {
-    const headingMatch = block.match(/^#{1,3}\s+(.*)$/);
-    if (headingMatch) {
-      sections.push({ heading: headingMatch[1].trim(), body: "" });
-    } else {
-      const last = sections[sections.length - 1];
-      if (last && last.heading && !last.body) {
-        last.body = block;
-      } else {
-        sections.push({ body: block });
-      }
-    }
-  }
-  return sections;
-}
+//   const sections: { heading?: string; body: string }[] = [];
+//   for (const block of blocks) {
+//     const headingMatch = block.match(/^#{1,3}\s+(.*)$/);
+//     if (headingMatch) {
+//       sections.push({ heading: headingMatch[1].trim(), body: "" });
+//     } else {
+//       const last = sections[sections.length - 1];
+//       if (last && last.heading && !last.body) {
+//         last.body = block;
+//       } else {
+//         sections.push({ body: block });
+//       }
+//     }
+//   }
+//   return sections;
+// }
 
 export default function LessonScreen() {
   const { id, lessonId } = useLocalSearchParams();
@@ -50,9 +51,7 @@ export default function LessonScreen() {
 
   const lesson = typeof lessonId === "string" ? lessons[lessonId] : null;
   const [loading, setLoading] = useState(!lesson);
-  const [progressSaving, setProgressSaving] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
-  const reportedRef = useRef<Set<string>>(new Set());
 
   useFocusEffect(
     useCallback(() => {
@@ -107,29 +106,13 @@ export default function LessonScreen() {
 
   const handleProceed = () => {
     if (!lesson) return;
-    handleAttemptedAll();
     router.push(`/topics/${id}/session?lessonId=${lesson.id}&quizz=true`);
   };
 
-  const handleAttemptedAll = useCallback(async () => {
-    if (!lesson || progressSaving || reportedRef.current.has(lesson.id)) return;
-    reportedRef.current.add(lesson.id);
-    setProgressSaving(true);
-    try {
-      const progressRes = await updateProgress(lesson.id);
-      setLessons(progressRes.updatedLessons);
-      setModules(progressRes.updatedModules);
-    } catch (err) {
-      console.error("Failed to update progress:", err);
-    } finally {
-      setProgressSaving(false);
-    }
-  }, [lesson, progressSaving, setLessons, setModules]);
-
-  const sections = useMemo(
-    () => (lesson ? splitSections(lesson.content) : []),
-    [lesson]
-  );
+  // const sections = useMemo(
+  //   () => (lesson ? splitSections(lesson.content) : []),
+  //   [lesson]
+  // );
 
   if (loading) {
     return (
@@ -159,7 +142,7 @@ export default function LessonScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.replace(`/topics/${id}`)}
+          onPress={() => router.back()}
           style={styles.iconButton}
         >
           <X size={20} color={tokens.colors.textPrimary} />
@@ -179,7 +162,7 @@ export default function LessonScreen() {
       >
         <Text style={styles.lessonDescription}>{lesson.description}</Text>
 
-        {sections.map((section: any, idx: number) => (
+        {/* {sections.map((section: any, idx: number) => (
           <View key={idx} style={styles.contentCard}>
             {section.heading ? (
               <Text style={styles.sectionHeading}>{section.heading}</Text>
@@ -187,15 +170,11 @@ export default function LessonScreen() {
               <Text style={styles.contentText}>{section.body}</Text>
             )}
           </View>
-        ))}
+        ))} */}
 
-        {/* <View style={styles.contentCard}> */}
-        {/* <Text style={styles.contentText}>{lesson.content}</Text> */}
-        {/* <EnrichedMarkdownText */}
-        {/* markdown={lesson.content} */}
-        {/* onLinkPress={({ url }) => Linking.openURL(url)} */}
-        {/* /> */}
-        {/* </View> */}
+        <View style={styles.contentCard}>
+          <EnrichedMarkdownText markdown={lesson.content} />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

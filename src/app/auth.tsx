@@ -177,13 +177,13 @@ export default function AuthScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.divider}>
+        {/* <View style={styles.divider}>
           <View style={styles.dividerLine} />
           <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
           <View style={styles.dividerLine} />
-        </View>
+        </View> */}
 
-        <TouchableOpacity
+        {/* <TouchableOpacity
           style={styles.socialBtnDisabled}
           disabled
           activeOpacity={1}
@@ -197,7 +197,7 @@ export default function AuthScreen() {
           <Text style={styles.socialBtnTextDisabled}>
             Google Account (coming soon)
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         <View style={styles.footer}>
           {mode === "login" ? (
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   label: {
-    fontSize: tokens.fontSize.xs,
+    fontSize: tokens.fontSize.sm,
     fontFamily: tokens.fontFamily.bodyBold,
     fontWeight: tokens.fontWeight.bold,
     color: tokens.colors.textSecondary,

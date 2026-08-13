@@ -17,6 +17,7 @@ import {
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -117,8 +118,12 @@ export default function TopicDetailScreen() {
         typeof id === "string" ? id : Array.isArray(id) ? id[0] : null;
       if (!targetId) return;
       await generateReviewCards(targetId);
-    } catch (e) {
+    } catch (e: any) {
       console.warn("Failed to generate review cards", e);
+      const msg =
+        e?.response?.data?.error ||
+        "Failed to generate review cards. Try again later.";
+      Alert.alert("Error", msg);
     } finally {
       setGeneratingCards(false);
     }
@@ -217,55 +222,56 @@ export default function TopicDetailScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <View style={styles.modeList}>
+          <View style={styles.statsGrid}>
+            <View style={styles.statBox}>
+              <RotateCcw
+                size={16}
+                color={tokens.colors.textSecondary}
+                style={{ marginBottom: 12 }}
+              />
+              <Text style={styles.statValue}>{stats.sessionsCompleted}</Text>
+              <Text style={styles.statLabel}>SESSIONS</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Clock
+                size={16}
+                color={tokens.colors.textSecondary}
+                style={{ marginBottom: 12 }}
+              />
+              <Text style={styles.statValue}>
+                {formatTime(stats.totalTimeSeconds)}
+              </Text>
+              <Text style={styles.statLabel}>TIME SPENT</Text>
+            </View>
+          </View>
 
-        <View style={styles.statsGrid}>
-          <View style={styles.statBox}>
-            <RotateCcw
-              size={16}
-              color={tokens.colors.textSecondary}
-              style={{ marginBottom: 12 }}
-            />
-            <Text style={styles.statValue}>{stats.sessionsCompleted}</Text>
-            <Text style={styles.statLabel}>SESSIONS</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Clock
-              size={16}
-              color={tokens.colors.textSecondary}
-              style={{ marginBottom: 12 }}
-            />
-            <Text style={styles.statValue}>
-              {formatTime(stats.totalTimeSeconds)}
-            </Text>
-            <Text style={styles.statLabel}>TIME SPENT</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.reviewGenCard}
+            activeOpacity={0.8}
+            onPress={handleGenerateReviewCards}
+            disabled={generatingCards}
+          >
+            <View style={styles.reviewGenIconBox}>
+              <RefreshCcw size={18} color={tokens.colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reviewGenTitle}>
+                {generatingCards
+                  ? "Generating review cards..."
+                  : "Generate review cards"}
+              </Text>
+              <Text style={styles.reviewGenSub}>
+                AI builds spaced-repetition flashcards from this roadmap.
+              </Text>
+            </View>
+            {generatingCards ? (
+              <ActivityIndicator size="small" color={tokens.colors.accent} />
+            ) : (
+              <ChevronRight size={18} color={tokens.colors.textTertiary} />
+            )}
+          </TouchableOpacity>
         </View>
-
-        <TouchableOpacity
-          style={styles.reviewGenCard}
-          activeOpacity={0.8}
-          onPress={handleGenerateReviewCards}
-          disabled={generatingCards}
-        >
-          <View style={styles.reviewGenIconBox}>
-            <RefreshCcw size={18} color={tokens.colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.reviewGenTitle}>
-              {generatingCards
-                ? "Generating review cards..."
-                : "Generate review cards"}
-            </Text>
-            <Text style={styles.reviewGenSub}>
-              AI builds spaced-repetition flashcards from this roadmap.
-            </Text>
-          </View>
-          {generatingCards ? (
-            <ActivityIndicator size="small" color={tokens.colors.accent} />
-          ) : (
-            <ChevronRight size={18} color={tokens.colors.textTertiary} />
-          )}
-        </TouchableOpacity>
 
         <View style={styles.timelineSection}>
           <View style={styles.timelineHeader}>
@@ -384,7 +390,7 @@ export default function TopicDetailScreen() {
                             disabled={lesson.status === "locked"}
                             onPress={() => {
                               if (lesson.status === "locked") return;
-                              router.replace(`/topics/${id}/${lesson.id}`);
+                              router.push(`/topics/${id}/${lesson.id}`);
                             }}
                             activeOpacity={0.7}
                           >
@@ -554,7 +560,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 12,
-    marginBottom: 24,
   },
   statBox: {
     flex: 1,

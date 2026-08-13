@@ -97,7 +97,7 @@ interface Props {
   score: number;
   total: number;
   onContinue: () => void;
-  onDashboard: () => void;
+  onTopic: () => void;
   userAnswers?: UserAnswer[];
   hasLesson?: boolean;
   nextLessonId?: string;
@@ -111,7 +111,7 @@ export default function SessionComplete({
   score,
   total,
   onContinue,
-  onDashboard,
+  onTopic,
   userAnswers,
   hasLesson,
   nextLessonId,
@@ -232,7 +232,7 @@ export default function SessionComplete({
   let calibrationText: string | null = null;
   if (rated.length > 0) {
     if (overconfident.length >= 2) {
-      calibrationText = `Confident on ${confidentCount} of ${rated.length}, correct on ${confidentAndCorrect} — likely overconfident in a few areas. Review those before next time.`;
+      calibrationText = `Confident on ${confidentCount} of ${rated.length}, correct on ${confidentAndCorrect} — likely overconfident in a few areas. Review those next time.`;
     } else if (
       underconfidentCorrect.length >= 2 &&
       confidentAndCorrect >= underconfidentCorrect.length
@@ -325,7 +325,7 @@ export default function SessionComplete({
         <TouchableOpacity
           style={styles.dashboardBtn}
           activeOpacity={0.8}
-          onPress={onDashboard}
+          onPress={onTopic}
         >
           <Text style={styles.dashboardBtnText}>Back to Topic</Text>
         </TouchableOpacity>
@@ -447,7 +447,7 @@ const styles = StyleSheet.create({
     borderColor: tokens.colors.border,
     borderRadius: tokens.radius["2xl"],
     padding: 16,
-    marginTop: 12,
+    marginTop: 24,
     maxWidth: 320,
     gap: 8,
   },

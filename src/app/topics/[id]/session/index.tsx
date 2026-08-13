@@ -354,16 +354,15 @@ export default function SessionScreen() {
     return undefined;
   }, [lessonId, lessons]);
 
-  const handleDashboard = () => {
+  const handleTopic = () => {
     handleFinishActions();
-    router.replace({
-      pathname: `/topics/${id}` as any,
-    });
+    router.dismiss(2);
   };
 
   const handleNextSession = () => {
     handleFinishActions();
     const nextLessonId = getNextLessonId();
+    router.dismiss(1);
     resetSession();
     if (nextLessonId) {
       router.replace({
@@ -442,7 +441,7 @@ export default function SessionScreen() {
         score={score}
         total={questions.length}
         onContinue={handleNextSession}
-        onDashboard={handleDashboard}
+        onTopic={handleTopic}
         userAnswers={useSessionStore.getState().userAnswers}
         hasLesson={!!lessonId}
         lessonId={lessonId as string | undefined}
