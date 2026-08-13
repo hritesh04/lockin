@@ -43,7 +43,7 @@ GENERATION RULES:
 - Generate between 5 and 10 questions. Use fewer for narrow topics, more for broad ones.
 - Mix question formats: MCQ for conceptual/factual, short answer for applied or reasoning questions.
 - Each question must target a distinct concept or sub-area. Do not repeat similar questions.
-- For MCQ: exactly 4 options labeled A, B, C, D. One correct answer. Distractors must be plausible.
+- For MCQ: exactly 4 plausible options. Do NOT indicate which option is correct.
 - For short answer: answerable in 1-3 sentences by someone at the claimed level.
 - Tag each question with concept_tags: the 1-3 shortest snake_case concept tags it targets.`, topic, proficiency)
 }

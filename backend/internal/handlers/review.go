@@ -49,9 +49,13 @@ func (h *APIHandler) GenerateReviewCards(c *fiber.Ctx) error {
 	var req GenerateReviewCardsReq
 	_ = c.BodyParser(&req)
 
+	if req.QuestionCount > 20 {
+		return c.Status(400).JSON(fiber.Map{"success": false, "error": "Question count must be <= 20"})
+	}
+
 	generated, err := h.Review.GenerateAndStore(c.Context(), userIDStr, topicID, req.QuestionCount)
 	if err != nil {
-		if errors.Is(err, service.ErrNoReachableLessons) {
+		if errors.Is(err, service.ErrNoReachableLessons) || errors.Is(err, service.ErrCompletePendingReviewCards) {
 			return c.Status(400).JSON(fiber.Map{"success": false, "error": err.Error()})
 		}
 		return c.Status(500).JSON(fiber.Map{"success": false, "error": "Failed to generate review cards"})
