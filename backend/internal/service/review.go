@@ -60,7 +60,7 @@ func NewReviewService(r ReviewRepository, tr TopicRepository, a AiCardGenerator)
 // ErrNoReachableLessons is returned when a topic has no completed or
 // in-progress lessons to base review cards on.
 var ErrNoReachableLessons = errors.New("complete at least one lesson before generating review cards")
-
+var ErrCompletePendingReviewCards = errors.New("Complete the pending review cards before generating more")
 // buildReachableLessonDigest renders a text digest of the lessons the user has
 // actually studied (completed or in-progress), skipping locked lessons and
 // modules that have no reachable lessons.
@@ -112,7 +112,7 @@ func (s *reviewService) GenerateAndStore(ctx context.Context, userID, topicID st
 	}
 	remaining := targetCount - existing
 	if remaining <= 0 {
-		return 0, nil
+		return 0, ErrCompletePendingReviewCards
 	}
 
 	return s.generateCards(ctx, userID, topicID, remaining)

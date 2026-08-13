@@ -190,9 +190,12 @@ type ReviewStats struct {
 
 // TopicRetentionSeries represents retention data for a single topic over time.
 type TopicRetentionSeries struct {
-	TopicID    string           `json:"topic_id"`
-	TopicTitle string           `json:"topic_title"`
-	Points     []RetentionPoint `json:"points"`
+	TopicID          string           `json:"topic_id"`
+	TopicTitle       string           `json:"topic_title"`
+	AvgEase          float64          `json:"avg_ease"`
+	CompletedLessons int              `json:"completed_lessons"`
+	CreatedAt        string           `json:"created_at"`
+	Points           []RetentionPoint `json:"points"`
 }
 
 // RetentionPoint is a single data point in the retention series.

@@ -22,7 +22,6 @@ import {
 } from "react-native";
 import { CurveType, LineChart } from "react-native-gifted-charts";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BottomNav } from "../components/BottomNav";
 import {
   getActivity,
   getMe,
@@ -238,14 +237,74 @@ export default function StatsScreen() {
       topicTitle: string;
     }[] = [];
 
+    // Exponential decay: retention(t) = lastValue * e^(-lambda * days)
+    const exponentialDecay = (
+      lastValue: number,
+      daysSince: number,
+      lambda: number,
+      floor: number = 5
+    ) => {
+      const decayed = lastValue * Math.exp(-lambda * daysSince);
+      return Math.max(floor, decayed);
+    };
+
+    // Calculate lambda based on ease factor, completed lessons, and active topic count
+    const calculateLambda = (
+      avgEase: number,
+      completedLessons: number,
+      activeTopics: number
+    ): number => {
+      const baseLambda = 0.15;
+      // Ease factor modifier: higher ease = slower decay (ease ranges 1.3-3.0+)
+      const easeModifier = 1 - ((avgEase - 1.3) / (3.0 - 1.3)) * 0.5;
+      // Lessons modifier: more completed lessons = slower decay (deeper knowledge)
+      const lessonsModifier = 1 - Math.min(completedLessons * 0.05, 0.4); // max 40% reduction
+      // Topic load modifier: more topics = faster decay
+      const topicModifier = 1 + (activeTopics - 1) * 0.1;
+      return baseLambda * easeModifier * lessonsModifier * topicModifier;
+    };
+
     topicDataMap.forEach((pointsMap, topicId) => {
       const series = retentionByTopic.find((s) => s.topic_id === topicId);
       if (!series) return;
 
-      const points = retentionLast7Days.map((day) => ({
-        value: pointsMap.get(day) ?? 0,
-        date: new Date(day),
-      }));
+      const activeTopics = retentionByTopic.length;
+      const avgEase = series.avg_ease || 2.5;
+      const completedLessons = series.completed_lessons || 0;
+      const lambda = calculateLambda(avgEase, completedLessons, activeTopics);
+      const topicCreatedDate = new Date(series.created_at);
+
+      const points = retentionLast7Days.map((day, index) => {
+        const dayDate = new Date(day);
+
+        // Show 0 for dates before the topic was created
+        if (dayDate < topicCreatedDate) {
+          return { value: 0, date: dayDate };
+        }
+
+        const value = pointsMap.get(day);
+        if (value !== undefined) {
+          return { value, date: dayDate };
+        }
+
+        // Find most recent day with data before this one
+        let lastKnownValue = 50;
+        let daysSinceLastReview = 0;
+
+        for (let i = index - 1; i >= 0; i--) {
+          const prevDay = retentionLast7Days[i];
+          if (pointsMap.has(prevDay)) {
+            lastKnownValue = pointsMap.get(prevDay)!;
+            daysSinceLastReview = index - i;
+            break;
+          }
+        }
+
+        return {
+          value: exponentialDecay(lastKnownValue, daysSinceLastReview, lambda),
+          date: dayDate,
+        };
+      });
 
       graphData.push({
         points,
@@ -315,7 +374,8 @@ export default function StatsScreen() {
                           {item.sessionCount} Sessions
                         </Text>
                         <Text style={styles.tooltipSubText}>
-                          {item.lessonCount} Lessons, {item.quizCount} Quizzes
+                          {item.lessonCount} Lessons, {item.quizCount}{" "}
+                          Q&A/Reviews
                         </Text>
                         <View style={styles.tooltipArrow} />
                       </View>
@@ -707,8 +767,6 @@ export default function StatsScreen() {
           )}
         </View>
       </ScrollView>
-
-      <BottomNav activeScreen="stats" />
     </SafeAreaView>
   );
 }

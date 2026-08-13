@@ -165,7 +165,7 @@ func main() {
 	reviewsGroup.Post("/:id/rate", apiHandler.RateReviewCard)
 
 	// Start nightly review card generation cron (midnight UTC)
-	go startNightlyCron(reviewService)
+	// go startNightlyCron(reviewService)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)

@@ -481,6 +481,9 @@ export type RetentionPoint = {
 export type TopicRetentionSeries = {
   topic_id: string;
   topic_title: string;
+  avg_ease: number;
+  completed_lessons: number;
+  created_at: string;
   points: RetentionPoint[];
 };
 

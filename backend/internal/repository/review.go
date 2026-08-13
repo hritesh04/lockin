@@ -90,7 +90,7 @@ func (r *reviewRepository) DueCount(ctx context.Context, userID uuid.UUID) (int,
 
 // CountByTopic returns the total number of review cards a user has for a topic.
 func (r *reviewRepository) CountByTopic(ctx context.Context, userID uuid.UUID, topicID *uuid.UUID) (int, error) {
-	query := `SELECT COUNT(*) FROM review_cards WHERE user_id = $1`
+	query := `SELECT COUNT(*) FROM review_cards WHERE user_id = $1 AND due_at <= NOW()`
 	args := []any{userID}
 	if topicID != nil {
 		query += ` AND topic_id = $2`
@@ -194,19 +194,33 @@ func (r *reviewRepository) GetStats(ctx context.Context, userID uuid.UUID) (mode
 // GetRetentionByTopic returns retention data for each topic over the last N days.
 func (r *reviewRepository) GetRetentionByTopic(ctx context.Context, userID uuid.UUID, days int) ([]models.TopicRetentionSeries, error) {
 	query := `
+		WITH topic_lessons AS (
+			SELECT
+				t.id as topic_id,
+				COUNT(*) FILTER (WHERE l.status = 'completed') as completed_lessons
+			FROM topics t
+			LEFT JOIN modules m ON m.topic_id = t.id
+			LEFT JOIN lessons l ON l.node_id = m.id
+			WHERE t.user_id = $1
+			GROUP BY t.id
+		)
 		SELECT
 			rc.topic_id::text as topic_id,
 			t.title as topic_title,
+			AVG(rc.ease_factor)::float as avg_ease,
+			tl.completed_lessons,
+			DATE(t.created_at AT TIME ZONE 'UTC')::text as topic_created_at,
 			DATE(rc.last_reviewed_at AT TIME ZONE 'UTC')::text as review_date,
 			COUNT(*) FILTER (WHERE rc.last_result >= 3)::float / COUNT(*)::float AS pct_correct,
 			COUNT(*)::int as review_count
 		FROM review_cards rc
 		JOIN topics t ON rc.topic_id = t.id
+		JOIN topic_lessons tl ON tl.topic_id = rc.topic_id
 		WHERE rc.user_id = $1
 		  AND rc.last_reviewed_at IS NOT NULL
 		  AND rc.last_result > 0
 		  AND rc.last_reviewed_at >= CURRENT_DATE - make_interval(days => $2)
-		GROUP BY rc.topic_id, t.title, DATE(rc.last_reviewed_at AT TIME ZONE 'UTC')
+		GROUP BY rc.topic_id, t.title, tl.completed_lessons, t.created_at, DATE(rc.last_reviewed_at AT TIME ZONE 'UTC')
 		ORDER BY rc.topic_id, review_date ASC
 	`
 	rows, err := r.db.Query(ctx, query, userID, days)
@@ -218,17 +232,20 @@ func (r *reviewRepository) GetRetentionByTopic(ctx context.Context, userID uuid.
 	// Group by topic
 	topicMap := make(map[string]*models.TopicRetentionSeries)
 	for rows.Next() {
-		var topicID, topicTitle, reviewDate string
-		var pctCorrect float64
-		var reviewCount int
-		if err := rows.Scan(&topicID, &topicTitle, &reviewDate, &pctCorrect, &reviewCount); err != nil {
+		var topicID, topicTitle, topicCreatedAt, reviewDate string
+		var avgEase, pctCorrect float64
+		var completedLessons, reviewCount int
+		if err := rows.Scan(&topicID, &topicTitle, &avgEase, &completedLessons, &topicCreatedAt, &reviewDate, &pctCorrect, &reviewCount); err != nil {
 			return nil, err
 		}
 		if _, ok := topicMap[topicID]; !ok {
 			topicMap[topicID] = &models.TopicRetentionSeries{
-				TopicID:    topicID,
-				TopicTitle: topicTitle,
-				Points:     []models.RetentionPoint{},
+				TopicID:          topicID,
+				TopicTitle:       topicTitle,
+				AvgEase:          avgEase,
+				CompletedLessons: completedLessons,
+				CreatedAt:        topicCreatedAt,
+				Points:           []models.RetentionPoint{},
 			}
 		}
 		topicMap[topicID].Points = append(topicMap[topicID].Points, models.RetentionPoint{
