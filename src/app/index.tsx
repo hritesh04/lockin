@@ -1,4 +1,3 @@
-import { BottomNav } from "@/components/BottomNav";
 import { Header } from "@/components/Header";
 import { HeroStreakCard } from "@/components/HeroStreakCard";
 import { StatRow } from "@/components/StatRow";
@@ -34,6 +33,7 @@ import { useAuthStore } from "../store/auth";
 import { useReviewsStore } from "../store/reviews";
 import { useSessionStore } from "../store/session";
 import { Topic, useTopicsStore } from "../store/topics";
+import { useUIStore } from "../store/ui";
 import { useUserStore } from "../store/user";
 import { tokens } from "../theme/tokens";
 
@@ -58,7 +58,12 @@ export default function HomeScreen() {
   const setActivityHistory = useUserStore((state) => state.setActivityHistory);
   const dueCards = useReviewsStore((state) => state.dueCards);
   const loadDue = useReviewsStore((state) => state.loadDue);
+  const fetchDueCount = useReviewsStore((state) => state.fetchDueCount);
   const dueCount = dueCards.length;
+  const setOnAddPress = useUIStore((state) => state.setOnAddPress);
+  const consumeAutoOpenAddModal = useUIStore(
+    (state) => state.consumeAutoOpenAddModal
+  );
 
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
@@ -92,6 +97,20 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setOnAddPress(() => setShowModal(true));
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      if (consumeAutoOpenAddModal()) {
+        timer = setTimeout(() => setShowModal(true), 200);
+      }
+      return () => {
+        setOnAddPress(null);
+        if (timer) clearTimeout(timer);
+      };
+    }, [setOnAddPress, consumeAutoOpenAddModal])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
       const controller = new AbortController();
 
       const run = async () => {
@@ -108,7 +127,7 @@ export default function HomeScreen() {
             setActivityHistory(activityInfo.activity || []);
           }
 
-          loadDue();
+          fetchDueCount();
 
           const mappedTopics: Topic[] = apiTopics.map((t: any) => ({
             id: t.id,
@@ -226,6 +245,7 @@ export default function HomeScreen() {
     } catch (e) {
       if (!isAbortError(e)) {
         console.error(e);
+        Alert.alert("Error", "Failed to create topic. Please try again.");
       }
     } finally {
       setIsGenerating(false);
@@ -240,6 +260,10 @@ export default function HomeScreen() {
       await loadDue();
     } catch (e) {
       console.warn("Failed to generate mixed review cards:", e);
+      Alert.alert(
+        "Error",
+        "Couldn't generate review cards. Make sure your topics have completed lessons, then try again."
+      );
       Alert.alert(
         "Mixed Review",
         "Couldn't generate review cards right now. Make sure your topics have completed lessons, then try again."
@@ -321,30 +345,34 @@ export default function HomeScreen() {
 
         <StatRow stats={[...(reviewsDueStats || []), ...todayStats]} />
 
-        <TouchableOpacity
-          style={styles.mixedReviewCard}
-          activeOpacity={0.8}
-          onPress={handleMixedReview}
-          disabled={reviewGenerating}
-        >
-          <View style={styles.reviewIconBox}>
-            {reviewGenerating ? (
-              <ActivityIndicator size="small" color={tokens.colors.accent} />
-            ) : (
-              <RefreshCcw size={18} color={tokens.colors.accent} />
-            )}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.reviewCardTitle}>
-              {reviewGenerating ? "Generating review cards..." : "Mixed Review"}
-            </Text>
-            <Text style={styles.reviewCardSub}>
-              {reviewGenerating
-                ? "Prioritizing your weak concepts"
-                : "Fresh cards for every topic — 5 each, focused on weak spots"}
-            </Text>
-          </View>
-        </TouchableOpacity>
+        {(heroTopic || additionalTopics.length > 0) && (
+          <TouchableOpacity
+            style={styles.mixedReviewCard}
+            activeOpacity={0.8}
+            onPress={handleMixedReview}
+            disabled={reviewGenerating}
+          >
+            <View style={styles.reviewIconBox}>
+              {reviewGenerating ? (
+                <ActivityIndicator size="small" color={tokens.colors.accent} />
+              ) : (
+                <RefreshCcw size={18} color={tokens.colors.accent} />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reviewCardTitle}>
+                {reviewGenerating
+                  ? "Generating review cards..."
+                  : "Mixed Review"}
+              </Text>
+              <Text style={styles.reviewCardSub}>
+                {reviewGenerating
+                  ? "Prioritizing your weak concepts"
+                  : "Fresh cards for every topic — 5 each, focused on weak spots"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {heroTopic ? (
           <TopicCard
@@ -376,8 +404,6 @@ export default function HomeScreen() {
           />
         ))}
       </ScrollView>
-
-      <BottomNav onAddPress={() => setShowModal(true)} activeScreen="home" />
 
       <Modal
         visible={showModal}

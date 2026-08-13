@@ -1,8 +1,7 @@
-import { BottomNav } from "@/components/BottomNav";
 import { tokens } from "@/theme/tokens";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Check, Smartphone, X, Zap } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   LayoutAnimation,
@@ -12,7 +11,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { completeSession } from "../../lib/api";
 import { useReviewsStore } from "../../store/reviews";
+import { useSessionStore } from "../../store/session";
+import { useUIStore } from "../../store/ui";
 
 export default function ReviewScreen() {
   const insets = useSafeAreaInsets();
@@ -20,15 +22,37 @@ export default function ReviewScreen() {
   const { dueCards, currentIndex, loading, completed, loadDue, rate } =
     useReviewsStore();
   const { topicId } = useLocalSearchParams();
+  const setHideBottomNav = useUIStore((state) => state.setHideBottomNav);
 
   const [flipped, setFlipped] = useState(false);
+
+  const hasActiveCard =
+    !completed && dueCards.length > 0 && !!dueCards[currentIndex];
 
   useFocusEffect(
     useCallback(() => {
       setFlipped(false);
       loadDue(topicId as string | undefined);
+      return () => {
+        // Complete session when leaving the review screen
+        const activeSessionId = useSessionStore.getState().activeSessionId;
+        const isServerSession =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            activeSessionId ?? ""
+          );
+        if (isServerSession) {
+          completeSession(activeSessionId as string).catch(() => {});
+        }
+        useSessionStore.getState().completeSession();
+        useReviewsStore.getState().reset();
+      };
     }, [loadDue, topicId])
   );
+
+  useEffect(() => {
+    setHideBottomNav(hasActiveCard);
+    return () => setHideBottomNav(false);
+  }, [hasActiveCard, setHideBottomNav]);
 
   const toggleFlip = () => {
     LayoutAnimation.configureNext(
@@ -82,7 +106,6 @@ export default function ReviewScreen() {
             Spaced repetition keeps your knowledge sharp. Check back soon.
           </Text>
         </View>
-        <BottomNav />
       </View>
     );
   }
@@ -116,8 +139,6 @@ export default function ReviewScreen() {
             💡 Generate review cards from your topics to build your queue.
           </Text>
         </View>
-
-        <BottomNav />
       </View>
     );
   }
@@ -163,7 +184,7 @@ export default function ReviewScreen() {
             >
               <View style={styles.cardTagRow}>
                 <Text style={styles.cardTag}>
-                  {card.concept_tags[0] || "recall"}
+                  {card.concept_tags[0].split("_").join(" ").trim() || "recall"}
                 </Text>
                 <Text style={styles.cardHint}>TAP TO REVEAL</Text>
               </View>
@@ -180,7 +201,7 @@ export default function ReviewScreen() {
             >
               <View style={styles.cardTagRow}>
                 <Text style={styles.cardTagBack}>
-                  {card.concept_tags[0] || "answer"}
+                  {card.concept_tags[0].split("_").join(" ").trim() || "answer"}
                 </Text>
                 <Text style={styles.cardHint}>HOW WELL DID YOU REMEMBER?</Text>
               </View>
@@ -293,8 +314,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cardTouchable: {
-    aspectRatio: 0.8,
-    maxHeight: "80%",
+    aspectRatio: 0.7,
+    // maxHeight: "80%",
   },
   card: {
     flex: 1,

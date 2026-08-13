@@ -1,12 +1,12 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 import {
   completeSession,
   getDueReviews,
   rateReviewCard,
   startReviewSession,
   type ApiReviewCard,
-} from '../lib/api';
-import { useSessionStore, Question } from './session';
+} from "../lib/api";
+import { Question, useSessionStore } from "./session";
 
 interface ReviewsState {
   dueCards: ApiReviewCard[];
@@ -15,6 +15,7 @@ interface ReviewsState {
   loading: boolean;
   completed: boolean;
   loadDue: (topicId?: string) => Promise<void>;
+  fetchDueCount: (topicId?: string) => Promise<void>;
   rate: (quality: number) => Promise<void>;
   reset: () => void;
 }
@@ -22,11 +23,11 @@ interface ReviewsState {
 function convertReviewCardToQuestion(card: ApiReviewCard): Question {
   return {
     id: card.id,
-    format: 'short_answer',
+    format: "short_answer",
     question: card.prompt,
     options: [],
     answer: card.answer,
-    explanation: `Concept: ${card.concept_tags.join(', ')}`,
+    explanation: `Concept: ${card.concept_tags.join(", ")}`,
   };
 }
 
@@ -41,15 +42,24 @@ export const useReviewsStore = create<ReviewsState>((set, get) => ({
     set({ loading: true });
     try {
       const cards = await getDueReviews(topicId ? { topic_id: topicId } : {});
-      set({ dueCards: cards, currentIndex: 0, ratings: {}, completed: cards.length === 0, loading: false });
+      set({
+        dueCards: cards,
+        currentIndex: 0,
+        ratings: {},
+        completed: cards.length === 0,
+        loading: false,
+      });
 
       if (cards.length > 0) {
         const questions = cards.map(convertReviewCardToQuestion);
         try {
-          const res = await startReviewSession(cards[0].topicId, cards[0].lessonId);
+          const res = await startReviewSession(
+            cards[0].topicId,
+            cards[0].lessonId
+          );
           useSessionStore.getState().startSession({
             sessionId: res.session_id,
-            type: 'review',
+            type: "review",
             topicId: cards[0].topicId,
             topicTitle: undefined,
             lessonId: cards[0].lessonId ?? undefined,
@@ -58,53 +68,85 @@ export const useReviewsStore = create<ReviewsState>((set, get) => ({
           });
         } catch (e) {
           console.warn(
-            'Failed to create review session entry',
+            "Failed to create review session entry",
             { topicId: cards[0].topicId, lessonId: cards[0].lessonId },
             e
           );
         }
       }
     } catch (e) {
-      console.warn('Failed to load due reviews', e);
+      console.warn("Failed to load due reviews", e);
       set({ loading: false });
+    }
+  },
+
+  fetchDueCount: async (topicId) => {
+    try {
+      const cards = await getDueReviews(topicId ? { topic_id: topicId } : {});
+      set({ dueCards: cards });
+    } catch (e) {
+      console.warn("Failed to fetch due count", e);
     }
   },
 
   rate: async (quality) => {
     const { dueCards, currentIndex, ratings } = get();
     const card = dueCards[currentIndex];
+
     if (!card) return;
 
-    set({ ratings: { ...ratings, [card.id]: quality } });
+    set({
+      ratings: {
+        ...ratings,
+        [card.id]: quality,
+      },
+    });
 
     try {
       await rateReviewCard(card.id, quality);
     } catch (e) {
-      console.warn('Failed to rate review card', e);
+      console.warn("Failed to rate review card", e);
     }
 
-    const remaining = dueCards.filter((c) => c.id !== card.id);
-    if (remaining.length === 0) {
-      set({ dueCards: [], currentIndex: 0, completed: true });
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex >= dueCards.length) {
+      set({
+        currentIndex: 0,
+        completed: true,
+      });
+
       const activeSessionId = useSessionStore.getState().activeSessionId;
-      const isServerSession = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        activeSessionId ?? ''
-      );
+
+      const isServerSession =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          activeSessionId ?? ""
+        );
+
       if (isServerSession) {
         try {
           await completeSession(activeSessionId as string);
         } catch (e) {
-          console.warn('Failed to complete review session', e);
+          console.warn("Failed to complete review session", e);
         }
       }
+
       useSessionStore.getState().completeSession();
     } else {
-      set({ dueCards: remaining, currentIndex: 0 });
+      set({
+        currentIndex: nextIndex,
+      });
     }
   },
 
   reset: () => {
-    set({ dueCards: [], currentIndex: 0, ratings: {}, completed: false, loading: false });
+    set({
+      dueCards: [],
+      currentIndex: 0,
+      ratings: {},
+      completed: false,
+      loading: false,
+    });
     useSessionStore.getState().resetSession();
   },
 }));

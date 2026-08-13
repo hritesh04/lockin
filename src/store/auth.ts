@@ -60,14 +60,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   refreshToken: null,
   hydrated: false,
   setTokens: async (token, refreshToken) => {
+    set({ token, refreshToken });
     await setItem(TOKEN_KEY, token);
     await setItem(REFRESH_KEY, refreshToken);
-    set({ token, refreshToken });
   },
   clearTokens: async () => {
+    set({ token: null, refreshToken: null });
     await deleteItem(TOKEN_KEY);
     await deleteItem(REFRESH_KEY);
-    set({ token: null, refreshToken: null });
   },
   hydrate: async () => {
     const token = await getItem(TOKEN_KEY);

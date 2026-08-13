@@ -10,10 +10,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUserStore } from "../store/user";
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const GOALS = [
   {
@@ -43,7 +44,7 @@ export default function OnboardingScreen() {
   const completeOnboarding = useUserStore((state) => state.completeOnboarding);
   const router = useRouter();
 
-  const [activeGoal, setActiveGoal] = useState<string>("career");
+  const [activeGoal, setActiveGoal] = useState<string>("Personal Interest");
   const [activeDuration, setActiveDuration] = useState<number>(10);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -53,42 +54,48 @@ export default function OnboardingScreen() {
     completeOnboarding(activeGoal, activeDuration);
     router.replace("/");
   };
+
   const handleScroll = (event: any) => {
-    const y = event.nativeEvent.contentOffset.y;
-    const index = Math.round(y / SCREEN_HEIGHT);
+    const x = event.nativeEvent.contentOffset.x;
+    const index = Math.round(x / SCREEN_WIDTH);
     if (index !== currentIndex) {
       setCurrentIndex(index);
     }
   };
 
-  const renderDots = () => (
-    <View
-      style={[styles.dotsContainer, { bottom: insets.bottom + 20 }]}
-      pointerEvents="none"
-    >
-      {[0, 1, 2].map((i) => (
-        <View
-          key={i}
-          style={[styles.dot, i === currentIndex && styles.dotActive]}
-        />
-      ))}
-    </View>
-  );
+  const scrollToNext = () => {
+    if (currentIndex < 2) {
+      scrollRef.current?.scrollTo({
+        x: SCREEN_WIDTH * (currentIndex + 1),
+        animated: true,
+      });
+    }
+  };
+
+  const handleBottomButton = () => {
+    if (currentIndex === 2) {
+      handleStart();
+    } else {
+      scrollToNext();
+    }
+  };
 
   return (
     <View style={styles.container}>
       <ScrollView
         ref={scrollRef}
         pagingEnabled
-        showsVerticalScrollIndicator={false}
+        horizontal
+        showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={handleScroll}
         scrollEventThrottle={16}
         bounces={false}
       >
+        {/* Slide 1: Goal Selection */}
         <View
           style={[
             {
-              height: SCREEN_HEIGHT,
+              width: SCREEN_WIDTH,
               paddingTop: insets.top,
               paddingBottom: insets.bottom,
             },
@@ -102,12 +109,12 @@ export default function OnboardingScreen() {
 
           <View style={styles.listContainer}>
             {GOALS.map((goal) => {
-              const isActive = activeGoal === goal.id;
+              const isActive = activeGoal === goal.title;
               return (
                 <TouchableOpacity
                   key={goal.id}
                   style={[styles.goalCard, isActive && styles.goalCardActive]}
-                  onPress={() => setActiveGoal(goal.id)}
+                  onPress={() => setActiveGoal(goal.title)}
                   activeOpacity={0.7}
                 >
                   <View style={styles.goalCardText}>
@@ -137,10 +144,11 @@ export default function OnboardingScreen() {
           </View>
         </View>
 
+        {/* Slide 2: Duration Selection */}
         <View
           style={[
             {
-              height: SCREEN_HEIGHT,
+              width: SCREEN_WIDTH,
               paddingTop: insets.top,
               paddingBottom: insets.bottom,
             },
@@ -175,10 +183,11 @@ export default function OnboardingScreen() {
           </View>
         </View>
 
+        {/* Slide 3: Confirmation */}
         <View
           style={[
             {
-              height: SCREEN_HEIGHT,
+              width: SCREEN_WIDTH,
               paddingTop: insets.top,
               paddingBottom: insets.bottom,
             },
@@ -196,17 +205,32 @@ export default function OnboardingScreen() {
                 Let&apos;s lock in.
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.btnPrimary}
-              onPress={handleStart}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.btnPrimaryText}>Start Learning</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
-      {renderDots()}
+
+      <Animated.View
+        entering={FadeInDown.delay(100).springify()}
+        style={[styles.bottomButtonContainer, { bottom: insets.bottom + 20 }]}
+      >
+        <TouchableOpacity
+          style={styles.btnPrimary}
+          onPress={handleBottomButton}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.btnPrimaryText}>
+            {currentIndex === 2 ? "Start Learning" : "Continue"}
+          </Text>
+        </TouchableOpacity>
+        <View style={[styles.dotsContainer]} pointerEvents="none">
+          {[0, 1, 2].map((i) => (
+            <View
+              key={i}
+              style={[styles.dot, i === currentIndex && styles.dotActive]}
+            />
+          ))}
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -351,10 +375,16 @@ const styles = StyleSheet.create({
     fontFamily: tokens.fontFamily.bodyBold,
     fontWeight: tokens.fontWeight.bold,
   },
-  dotsContainer: {
+  bottomButtonContainer: {
+    flexDirection: "column",
     position: "absolute",
     left: 0,
     right: 0,
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    gap: 18,
+  },
+  dotsContainer: {
     flexDirection: "row",
     justifyContent: "center",
     gap: 8,

@@ -3,7 +3,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useAuthStore } from '../store/auth';
 import { useUserStore } from '../store/user';
+import { useUIStore } from '../store/ui';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomNav } from '../components/BottomNav';
 
 export default function RootLayout() {
   const hasCompletedOnboarding = useUserStore(state => state.hasCompletedOnboarding);
@@ -13,6 +15,9 @@ export default function RootLayout() {
   const router = useRouter();
   const hydrate = useAuthStore(state => state.hydrate);
   const authHydrated = useAuthStore(state => state.hydrated);
+  const onAddPress = useUIStore(state => state.onAddPress);
+  const hideBottomNav = useUIStore(state => state.hideBottomNav);
+  const triggerAutoOpenAddModal = useUIStore(state => state.triggerAutoOpenAddModal);
 
   useEffect(() => {
     hydrate();
@@ -44,6 +49,16 @@ export default function RootLayout() {
     }
   }, [token, segments, hasCompletedOnboarding, hydrated, authHydrated]);
 
+  const s = segments as string[];
+  const currentRoute = s[0] ?? '';
+  const showBottomNav = token && hasCompletedOnboarding && !hideBottomNav &&
+    (currentRoute === '' || currentRoute === 'stats' || currentRoute === 'review');
+
+  const activeScreen =
+    currentRoute === 'stats' ? 'stats' :
+    currentRoute === 'review' ? 'review' :
+    'home';
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar hidden />
@@ -56,6 +71,19 @@ export default function RootLayout() {
         <Stack.Screen name="review/index" />
         <Stack.Screen name="profile" />
       </Stack>
+      {showBottomNav && (
+        <BottomNav
+          activeScreen={activeScreen}
+          onAddPress={() => {
+            if (currentRoute === '') {
+              onAddPress?.();
+            } else {
+              triggerAutoOpenAddModal();
+              router.replace('/');
+            }
+          }}
+        />
+      )}
     </GestureHandlerRootView>
   );
 }
