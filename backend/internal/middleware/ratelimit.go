@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 type rateLimiter struct {
@@ -90,7 +92,7 @@ func AuthRateLimit() fiber.Handler {
 }
 
 func AIRateLimit() fiber.Handler {
-	limiter := newRateLimiter(10, time.Minute)
+	limiter := newRateLimiter(5, time.Minute)
 
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
@@ -111,6 +113,62 @@ func AIRateLimit() fiber.Handler {
 				"error":   "AI rate limit exceeded. Please try again later.",
 			})
 		}
+		return c.Next()
+	}
+}
+
+func TopicCreationRateLimit(rdb *redis.Client) fiber.Handler {
+	const limit = 2
+
+	return func(c *fiber.Ctx) error {
+		userID, ok := c.Locals("user_id").(string)
+		if !ok || userID == "" {
+			return c.Next()
+		}
+
+		key := "rate_limit:topic:" + userID
+		ctx := context.Background()
+
+		val, err := rdb.Get(ctx, key).Int64()
+		if err != nil && err != redis.Nil {
+			return c.Next()
+		}
+
+		if val >= limit {
+			return c.Status(429).JSON(fiber.Map{
+				"success": false,
+				"error":   "You can only create up to 2 topics.",
+			})
+		}
+
+		return c.Next()
+	}
+}
+
+func ReviewCardGenerationRateLimit(rdb *redis.Client) fiber.Handler {
+	const limit = 2
+
+	return func(c *fiber.Ctx) error {
+		userID, ok := c.Locals("user_id").(string)
+		if !ok || userID == "" {
+			return c.Next()
+		}
+
+		key := "rate_limit:review:" + userID
+		ctx := context.Background()
+
+		val, err := rdb.Get(ctx, key).Int64()
+		if err != nil && err != redis.Nil {
+			return c.Next()
+		}
+
+		if val >= limit {
+			return c.Status(429).JSON(fiber.Map{
+				"success": false,
+				"error":   "You can only generate review cards 2 times per day.",
+			})
+		}
+
 		return c.Next()
 	}
 }

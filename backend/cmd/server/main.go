@@ -32,6 +32,7 @@ import (
 	"github.com/acerowl/lockin/backend/internal/handlers"
 	"github.com/acerowl/lockin/backend/internal/lib"
 	"github.com/acerowl/lockin/backend/internal/middleware"
+	"github.com/acerowl/lockin/backend/internal/redis"
 	"github.com/acerowl/lockin/backend/internal/repository"
 	"github.com/acerowl/lockin/backend/internal/service"
 	"github.com/gofiber/fiber/v2"
@@ -55,6 +56,12 @@ func main() {
 		log.Fatalf("Database connection failed: %v", err)
 	}
 	defer db.Close()
+
+	// Connect to Redis
+	if err := redis.Connect(); err != nil {
+		log.Fatalf("Redis connection failed: %v", err)
+	}
+	defer redis.Close()
 
 	// Initialize Fiber app with timeouts
 	app := fiber.New(fiber.Config{
@@ -115,11 +122,11 @@ func main() {
 	reviewRepo := repository.NewReviewRepository(db.Pool)
 
 	authService := service.NewAuthService(userRepo)
-	topicService := service.NewTopicService(topicRepo, aiGen)
+	topicService := service.NewTopicService(topicRepo, aiGen, redis.Client)
 	moduleService := service.NewModuleService(moduleRepo)
 	lessonService := service.NewLessonService(lessonRepo, moduleRepo)
 	sessionService := service.NewSessionService(sessionRepo, topicRepo, userRepo, aiGen, reviewRepo)
-	reviewService := service.NewReviewService(reviewRepo, topicRepo, aiGen)
+	reviewService := service.NewReviewService(reviewRepo, topicRepo, aiGen, redis.Client)
 
 	apiHandler := handlers.NewAPIHandler(aiGen, authService, topicService, moduleService, lessonService, sessionService, reviewService)
 
@@ -137,12 +144,12 @@ func main() {
 
 	topicsGroup := api.Group("/topics", middleware.Protected())
 	topicsGroup.Get("/", apiHandler.ListTopics)
-	topicsGroup.Post("/", apiHandler.CreateTopic)
+	topicsGroup.Post("/", middleware.TopicCreationRateLimit(redis.Client), apiHandler.CreateTopic)
 	topicsGroup.Get("/:id", apiHandler.GetTopic)
 	topicsGroup.Get("/roadmap/:id", apiHandler.GetRoadmap)
-	topicsGroup.Post("/assessment", middleware.AIRateLimit(), apiHandler.CreateTopicAssessment)
-	topicsGroup.Post("/assessment/evaluate", middleware.AIRateLimit(), apiHandler.EvaluateTopicAssessment)
-	topicsGroup.Post("/:id/review-cards/generate", middleware.AIRateLimit(), apiHandler.GenerateReviewCards)
+	topicsGroup.Post("/assessment", middleware.TopicCreationRateLimit(redis.Client), middleware.AIRateLimit(), apiHandler.CreateTopicAssessment)
+	topicsGroup.Post("/assessment/evaluate", middleware.TopicCreationRateLimit(redis.Client), middleware.AIRateLimit(), apiHandler.EvaluateTopicAssessment)
+	topicsGroup.Post("/:id/review-cards/generate", middleware.ReviewCardGenerationRateLimit(redis.Client), middleware.AIRateLimit(), apiHandler.GenerateReviewCards)
 
 	moduleGroup := api.Group("/modules", middleware.Protected())
 	moduleGroup.Post("/status/:id", apiHandler.UpdateModuleStatus)
@@ -157,7 +164,7 @@ func main() {
 	sessionsGroup.Get("/activity", apiHandler.GetUserActivity)
 
 	reviewsGroup := api.Group("/reviews", middleware.Protected())
-	reviewsGroup.Post("/generate", middleware.AIRateLimit(), apiHandler.GenerateAllReviewCards)
+	reviewsGroup.Post("/generate", middleware.ReviewCardGenerationRateLimit(redis.Client), middleware.AIRateLimit(), apiHandler.GenerateAllReviewCards)
 	reviewsGroup.Post("/session/start", apiHandler.StartReviewSession)
 	reviewsGroup.Get("/due", apiHandler.GetDueReviews)
 	reviewsGroup.Get("/stats", apiHandler.GetReviewStats)

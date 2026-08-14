@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Port            string
 	DatabaseURL     string
+	RedisURL        string
 	AIProvider      string
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
@@ -25,7 +26,8 @@ func Load() *Config {
 
 	cfg := &Config{
 		Port:            getEnv("PORT", "8080"),
-		DatabaseURL:     getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/lockin"),  
+		DatabaseURL:     getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/lockin"),
+		RedisURL:        getEnv("REDIS_URL", "redis://localhost:6379"),
 		AIProvider:      getEnv("AI_PROVIDER", "openai"),
 		ReadTimeout:     10 * time.Second,
 		WriteTimeout:    10 * time.Second,

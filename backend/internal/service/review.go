@@ -11,6 +11,7 @@ import (
 	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/acerowl/lockin/backend/internal/repository"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 // AiCardGenerator generates generative flashcards from a topic's lesson content.
@@ -51,10 +52,11 @@ type reviewService struct {
 	repo      ReviewRepository
 	topicRepo TopicRepository
 	ai        AiCardGenerator
+	rdb       *redis.Client
 }
 
-func NewReviewService(r ReviewRepository, tr TopicRepository, a AiCardGenerator) *reviewService {
-	return &reviewService{repo: r, topicRepo: tr, ai: a}
+func NewReviewService(r ReviewRepository, tr TopicRepository, a AiCardGenerator, rdb *redis.Client) *reviewService {
+	return &reviewService{repo: r, topicRepo: tr, ai: a, rdb: rdb}
 }
 
 // ErrNoReachableLessons is returned when a topic has no completed or
@@ -115,7 +117,13 @@ func (s *reviewService) GenerateAndStore(ctx context.Context, userID, topicID st
 		return 0, ErrCompletePendingReviewCards
 	}
 
-	return s.generateCards(ctx, userID, topicID, remaining)
+	n, err := s.generateCards(ctx, userID, topicID, remaining)
+	if err != nil {
+		return 0, err
+	}
+
+	s.incrementReviewRateLimit(userID)
+	return n, nil
 }
 
 // generateCards generates exactly `count` fresh review cards for a topic and
@@ -255,6 +263,10 @@ func (s *reviewService) GenerateAll(ctx context.Context, userID string, perTopic
 			return total, err
 		}
 		total += n
+	}
+
+	if total > 0 {
+		s.incrementReviewRateLimit(userID)
 	}
 	return total, nil
 }
@@ -398,4 +410,19 @@ func (s *reviewService) GenerateNightlyReviewCards(ctx context.Context) (int, er
 		total += n
 	}
 	return total, nil
+}
+
+func (s *reviewService) incrementReviewRateLimit(userID string) {
+	if s.rdb == nil {
+		return
+	}
+	key := "rate_limit:review:" + userID
+	ctx := context.Background()
+	val, err := s.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return
+	}
+	if val == 1 {
+		s.rdb.Expire(ctx, key, 24*time.Hour)
+	}
 }

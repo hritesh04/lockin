@@ -5,113 +5,21 @@ import (
 	"time"
 
 	"github.com/acerowl/lockin/backend/internal/models"
-	"github.com/acerowl/lockin/backend/internal/repository"
 )
 
-func activityEntry(day string, seconds int) repository.UserSessionActivity {
+func streakDatePtr(day string) *time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
 		panic(err)
 	}
-	created := t.In(time.UTC)
-	completed := created.Add(time.Duration(seconds) * time.Second)
-	return repository.UserSessionActivity{CreatedAt: created, CompletedAt: &completed}
+	utc := t.In(time.UTC)
+	return &utc
 }
 
-func TestComputeStreakWithCommitment_MeetsGoalEachDay(t *testing.T) {
-	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	activity := []repository.UserSessionActivity{
-		activityEntry("2026-08-07", 1200),
-		activityEntry("2026-08-06", 1200),
-		activityEntry("2026-08-05", 1200),
-	}
-
-	current, longest := computeStreakWithCommitment(activity, 600, now, 0)
-	if current != 3 {
-		t.Errorf("expected current=3, got %d", current)
-	}
-	if longest != 3 {
-		t.Errorf("expected longest=3, got %d", longest)
-	}
-}
-
-func TestComputeStreakWithCommitment_BreaksOnMissedDay(t *testing.T) {
-	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	activity := []repository.UserSessionActivity{
-		activityEntry("2026-08-07", 1200),
-		activityEntry("2026-08-05", 1200),
-	}
-
-	current, longest := computeStreakWithCommitment(activity, 600, now, 0)
-	if current != 1 {
-		t.Errorf("expected current=1, got %d", current)
-	}
-	if longest != 2 {
-		t.Errorf("expected longest=2, got %d", longest)
-	}
-}
-
-func TestComputeStreakWithCommitment_LongestAcrossHistory(t *testing.T) {
-	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	activity := []repository.UserSessionActivity{
-		activityEntry("2026-08-07", 1200),
-		activityEntry("2026-08-02", 1200),
-		activityEntry("2026-08-01", 1200),
-		activityEntry("2026-07-31", 1200),
-	}
-
-	current, longest := computeStreakWithCommitment(activity, 600, now, 0)
-	if current != 1 {
-		t.Errorf("expected current=1, got %d", current)
-	}
-	if longest != 4 {
-		t.Errorf("expected longest=4, got %d", longest)
-	}
-}
-
-func TestComputeStreakWithCommitment_BelowGoalDoesNotCount(t *testing.T) {
-	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	activity := []repository.UserSessionActivity{
-		activityEntry("2026-08-07", 300),
-	}
-
-	current, longest := computeStreakWithCommitment(activity, 600, now, 0)
-	if current != 0 {
-		t.Errorf("expected current=0, got %d", current)
-	}
-	if longest != 0 {
-		t.Errorf("expected longest=0, got %d", longest)
-	}
-}
-
-func TestComputeStreakWithCommitment_EmptyActivity(t *testing.T) {
+func TestComputeIncrementalStreak_NilDate(t *testing.T) {
 	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
 
-	current, longest := computeStreakWithCommitment(nil, 600, now, 0)
-	if current != 0 {
-		t.Errorf("expected current=0, got %d", current)
-	}
-	if longest != 0 {
-		t.Errorf("expected longest=0, got %d", longest)
-	}
-}
-
-func TestComputeStreakWithCommitment_ExistingLongestPreserved(t *testing.T) {
-	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	activity := []repository.UserSessionActivity{
-		activityEntry("2026-08-07", 1200),
-	}
-
-	_, longest := computeStreakWithCommitment(activity, 600, now, 9)
-	if longest != 9 {
-		t.Errorf("expected longest=9, got %d", longest)
-	}
-}
-
-func TestComputeLegacyStreak_NoLastSession(t *testing.T) {
-	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-
-	current, longest := computeLegacyStreak(now, nil, 5, 8)
+	current, longest := computeIncrementalStreak(now, nil, 0, 0)
 	if current != 1 {
 		t.Errorf("expected current=1, got %d", current)
 	}
@@ -120,36 +28,19 @@ func TestComputeLegacyStreak_NoLastSession(t *testing.T) {
 	}
 }
 
-func TestComputeLegacyStreak_ConsecutiveDay(t *testing.T) {
+func TestComputeIncrementalStreak_NilDatePreservesLongest(t *testing.T) {
 	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	yesterday := now.AddDate(0, 0, -1)
 
-	current, longest := computeLegacyStreak(now, &yesterday, 3, 4)
-	if current != 4 {
-		t.Errorf("expected current=4, got %d", current)
-	}
-	if longest != 4 {
-		t.Errorf("expected longest=4, got %d", longest)
+	_, longest := computeIncrementalStreak(now, nil, 0, 9)
+	if longest != 9 {
+		t.Errorf("expected longest=9, got %d", longest)
 	}
 }
 
-func TestComputeLegacyStreak_GapResetsCurrent(t *testing.T) {
-	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	threeDaysAgo := now.AddDate(0, 0, -3)
-
-	current, longest := computeLegacyStreak(now, &threeDaysAgo, 3, 4)
-	if current != 1 {
-		t.Errorf("expected current=1, got %d", current)
-	}
-	if longest != 4 {
-		t.Errorf("expected longest=4, got %d", longest)
-	}
-}
-
-func TestComputeLegacyStreak_SameDayNoIncrement(t *testing.T) {
+func TestComputeIncrementalStreak_SameDayNoIncrement(t *testing.T) {
 	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
 
-	current, longest := computeLegacyStreak(now, &now, 3, 4)
+	current, longest := computeIncrementalStreak(now, streakDatePtr("2026-08-07"), 3, 4)
 	if current != 3 {
 		t.Errorf("expected current=3, got %d", current)
 	}
@@ -158,82 +49,96 @@ func TestComputeLegacyStreak_SameDayNoIncrement(t *testing.T) {
 	}
 }
 
-func TestReviewCardsToQuestions_EmptyInput(t *testing.T) {
-	result := reviewCardsToQuestions(nil)
-	if len(result) != 0 {
-		t.Errorf("expected empty slice, got %d", len(result))
+func TestComputeIncrementalStreak_ConsecutiveDay(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+
+	current, longest := computeIncrementalStreak(now, streakDatePtr("2026-08-06"), 3, 4)
+	if current != 4 {
+		t.Errorf("expected current=4, got %d", current)
+	}
+	if longest != 4 {
+		t.Errorf("expected longest=4, got %d", longest)
 	}
 }
 
-func TestReviewCardsToQuestions_MapsFields(t *testing.T) {
-	cards := []models.ReviewCard{
-		{
-			ID:          "card-1",
-			Prompt:      "What is X?",
-			Answer:      "X is Y",
-			ConceptTags: []string{"concept-a"},
-		},
-		{
-			ID:          "card-2",
-			Prompt:      "Define Z",
-			Answer:      "Z means W",
-			ConceptTags: []string{"concept-b", "concept-c"},
-		},
-	}
+func TestComputeIncrementalStreak_ConsecutiveDayUpdatesLongest(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
 
-	result := reviewCardsToQuestions(cards)
-
-	if len(result) != 2 {
-		t.Fatalf("expected 2 questions, got %d", len(result))
+	current, longest := computeIncrementalStreak(now, streakDatePtr("2026-08-06"), 3, 3)
+	if current != 4 {
+		t.Errorf("expected current=4, got %d", current)
 	}
-
-	q1 := result[0]
-	if q1.ID != "card-1" {
-		t.Errorf("expected ID=card-1, got %s", q1.ID)
-	}
-	if q1.Type != models.FillBlank {
-		t.Errorf("expected type=fill_blank, got %s", q1.Type)
-	}
-	if q1.Index != 1 {
-		t.Errorf("expected index=1, got %d", q1.Index)
-	}
-	if q1.Question != "What is X?" {
-		t.Errorf("expected question='What is X?', got %s", q1.Question)
-	}
-	if q1.Answer == nil || *q1.Answer != "X is Y" {
-		t.Errorf("expected answer='X is Y', got %v", q1.Answer)
-	}
-	if q1.Explanation != "X is Y" {
-		t.Errorf("expected explanation='X is Y', got %s", q1.Explanation)
-	}
-	if len(q1.ConceptTags) != 1 || q1.ConceptTags[0] != "concept-a" {
-		t.Errorf("expected concept_tags=[concept-a], got %v", q1.ConceptTags)
-	}
-
-	q2 := result[1]
-	if q2.Index != 2 {
-		t.Errorf("expected index=2, got %d", q2.Index)
-	}
-	if q2.ID != "card-2" {
-		t.Errorf("expected ID=card-2, got %s", q2.ID)
+	if longest != 4 {
+		t.Errorf("expected longest=4, got %d", longest)
 	}
 }
 
-func TestReviewCardsToQuestions_IndexSequential(t *testing.T) {
-	cards := make([]models.ReviewCard, 5)
-	for i := range cards {
-		cards[i] = models.ReviewCard{
-			ID:     "card-" + string(rune('a'+i)),
-			Prompt: "Q",
-			Answer: "A",
-		}
-	}
+func TestComputeIncrementalStreak_GapResetsCurrent(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
 
-	result := reviewCardsToQuestions(cards)
-	for i, q := range result {
-		if q.Index != i+1 {
-			t.Errorf("expected index=%d, got %d", i+1, q.Index)
-		}
+	current, longest := computeIncrementalStreak(now, streakDatePtr("2026-08-04"), 3, 4)
+	if current != 1 {
+		t.Errorf("expected current=1, got %d", current)
+	}
+	if longest != 4 {
+		t.Errorf("expected longest=4, got %d", longest)
+	}
+}
+
+func TestComputeIncrementalStreak_TimeZoneAgnostic(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+	// 2026-08-06 23:30 IST == 2026-08-06 18:00 UTC -> still yesterday.
+	ist := time.FixedZone("IST", 5*3600+30*60)
+	last := time.Date(2026, 8, 6, 23, 30, 0, 0, ist)
+
+	current, _ := computeIncrementalStreak(now, &last, 3, 4)
+	if current != 4 {
+		t.Errorf("expected current=4, got %d", current)
+	}
+}
+
+func TestExpiredCurrentStreak_NilDate(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+
+	got := expiredCurrentStreak(nil, 3, now)
+	if got != 3 {
+		t.Errorf("expected current=3, got %d", got)
+	}
+}
+
+func TestExpiredCurrentStreak_PendingDayKept(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+
+	got := expiredCurrentStreak(streakDatePtr("2026-08-06"), 3, now)
+	if got != 3 {
+		t.Errorf("expected current=3, got %d", got)
+	}
+}
+
+func TestExpiredCurrentStreak_QualifiedTodayKept(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+
+	got := expiredCurrentStreak(streakDatePtr("2026-08-07"), 4, now)
+	if got != 4 {
+		t.Errorf("expected current=4, got %d", got)
+	}
+}
+
+func TestExpiredCurrentStreak_SkippedWholeDay(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+
+	got := expiredCurrentStreak(streakDatePtr("2026-08-05"), 3, now)
+	if got != 0 {
+		t.Errorf("expected current=0, got %d", got)
+	}
+}
+
+func TestExpiredCurrentStreak_ExpiredOnOlderGap(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+
+	got := expiredCurrentStreak(streakDatePtr("2026-07-01"), 3, now)
+	if got != 0 {
+		t.Errorf("expected current=0, got %d", got)
 	}
 }
 
@@ -493,5 +398,76 @@ func TestFormatTime_NonNil_ReturnsRFC3339(t *testing.T) {
 	result := formatTime(&now)
 	if result == "" {
 		t.Error("expected non-empty string")
+	}
+}
+
+func TestBuildReachableLessonDigest_NilRoadmap(t *testing.T) {
+	if got := buildReachableLessonDigest(nil); got != "" {
+		t.Errorf("expected empty digest, got %q", got)
+	}
+}
+
+func TestBuildReachableLessonDigest_AllLocked(t *testing.T) {
+	roadmap := &models.TopicRoadmap{
+		Modules: []models.Module{
+			{Title: "Module 1", Lessons: []models.Lesson{
+				{Title: "Lesson 1", Description: "L1", Status: models.StatusLocked},
+				{Title: "Lesson 2", Description: "L2", Status: models.StatusLocked},
+			}},
+		},
+	}
+	if got := buildReachableLessonDigest(roadmap); got != "" {
+		t.Errorf("expected empty digest, got %q", got)
+	}
+}
+
+func TestBuildReachableLessonDigest_IncludesReachableOnly(t *testing.T) {
+	roadmap := &models.TopicRoadmap{
+		Modules: []models.Module{
+			{
+				Title:       "Gradient Descent",
+				ConceptTags: []string{"gradient_descent", "learning_rate"},
+				Lessons: []models.Lesson{
+					{Title: "Intuition", Description: "Big picture", Status: models.StatusCompleted},
+					{Title: "Math", Description: "Derivations", Status: models.StatusInProgress},
+					{Title: "Optimisers", Description: "Future content", Status: models.StatusLocked},
+				},
+			},
+			{
+				Title: "Locked Module",
+				Lessons: []models.Lesson{
+					{Title: "Hidden", Description: "Nope", Status: models.StatusLocked},
+				},
+			},
+		},
+	}
+
+	want := "Module: Gradient Descent\n" +
+		"  Concept tags: gradient_descent, learning_rate\n" +
+		"  - Lesson: Intuition — Big picture\n" +
+		"  - Lesson: Math — Derivations\n"
+
+	if got := buildReachableLessonDigest(roadmap); got != want {
+		t.Errorf("digest mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestBuildReachableLessonDigest_NoConceptTags(t *testing.T) {
+	roadmap := &models.TopicRoadmap{
+		Modules: []models.Module{
+			{
+				Title: "Module 1",
+				Lessons: []models.Lesson{
+					{Title: "Only", Description: "One", Status: models.StatusCompleted},
+				},
+			},
+		},
+	}
+
+	want := "Module: Module 1\n" +
+		"  - Lesson: Only — One\n"
+
+	if got := buildReachableLessonDigest(roadmap); got != want {
+		t.Errorf("digest mismatch:\n got: %q\nwant: %q", got, want)
 	}
 }

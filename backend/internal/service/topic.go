@@ -8,6 +8,7 @@ import (
 	"github.com/acerowl/lockin/backend/internal/ai"
 	"github.com/acerowl/lockin/backend/internal/models"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 // AIGenerator defines the behavior required for AI operations
@@ -29,10 +30,11 @@ type TopicRepository interface {
 type topicService struct {
 	repo  TopicRepository
 	aiGen AIGenerator
+	rdb   *redis.Client
 }
 
-func NewTopicService(r TopicRepository, aiGen AIGenerator) *topicService {
-	return &topicService{repo: r, aiGen: aiGen}
+func NewTopicService(r TopicRepository, aiGen AIGenerator, rdb *redis.Client) *topicService {
+	return &topicService{repo: r, aiGen: aiGen, rdb: rdb}
 }
 
 // familiarityToTier maps the familiarity level to an initial tier value.
@@ -65,6 +67,9 @@ func (s *topicService) CreateTopic(ctx context.Context, userID string, title str
 	if err != nil {
 		return models.Topic{}, err
 	}
+
+	s.incrementTopicRateLimit(userID)
+
 	goCtx := context.Background()
 	go func() {
 		if !s.repo.IsUserTopic(goCtx, userID, topic.ID) {
@@ -117,6 +122,9 @@ func (s *topicService) EvaluateAssessmentAndCreateTopic(ctx context.Context, use
 	if err := s.repo.Create(ctx, newTopic); err != nil {
 		return models.Topic{}, err
 	}
+
+	s.incrementTopicRateLimit(userID)
+
 	goCtx := context.Background()
 	go func() {
 		if !s.repo.IsUserTopic(goCtx, userID, newTopic.ID) {
@@ -125,4 +133,19 @@ func (s *topicService) EvaluateAssessmentAndCreateTopic(ctx context.Context, use
 		_ = s.aiGen.GenerateRoadmap(goCtx, newTopic.ID, topic, fmt.Sprintf("%s - TIER: %d", evaluation.NewRemark, evaluation.NewTier), evaluation.RecommendedFocus)
 	}()
 	return newTopic, nil
+}
+
+func (s *topicService) incrementTopicRateLimit(userID string) {
+	if s.rdb == nil {
+		return
+	}
+	key := "rate_limit:topic:" + userID
+	ctx := context.Background()
+	val, err := s.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return
+	}
+	if val == 1 {
+		s.rdb.Persist(ctx, key)
+	}
 }

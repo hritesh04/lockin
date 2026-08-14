@@ -122,7 +122,7 @@ func (h *APIHandler) GetDueReviews(c *fiber.Ctx) error {
 		topicID = &parsed
 	}
 
-	limit := 20
+	limit := 0
 	if l := c.QueryInt("limit"); l > 0 {
 		limit = l
 	}

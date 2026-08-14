@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/acerowl/lockin/backend/internal/models"
+	"github.com/acerowl/lockin/backend/internal/repository"
 	"github.com/google/uuid"
 )
 
@@ -24,16 +25,41 @@ func (m *mockReviewRepo) BatchInsertCards(_ context.Context, cards []models.Revi
 	return nil
 }
 
+func (m *mockReviewRepo) BatchInsertCardsFiltered(_ context.Context, cards []models.ReviewCard) (int, error) {
+	inserted := 0
+	for _, c := range cards {
+		m.cards[uuid.MustParse(c.ID)] = c
+		inserted++
+	}
+	return inserted, nil
+}
+
 func (m *mockReviewRepo) ListDue(_ context.Context, _ uuid.UUID, _ *uuid.UUID, _ int) ([]models.ReviewCard, error) {
 	return nil, nil
 }
 
-func (m *mockReviewRepo) ListDueExcludingTopic(_ context.Context, _ uuid.UUID, _ *uuid.UUID, _ int) ([]models.ReviewCard, error) {
+func (m *mockReviewRepo) ListByTopic(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]models.ReviewCard, error) {
 	return nil, nil
 }
 
 func (m *mockReviewRepo) DueCount(_ context.Context, _ uuid.UUID) (int, error) {
 	return 0, nil
+}
+
+func (m *mockReviewRepo) CountByTopic(_ context.Context, _ uuid.UUID, _ *uuid.UUID) (int, error) {
+	return 0, nil
+}
+
+func (m *mockReviewRepo) CountByTopicWithViewStatus(_ context.Context, _ uuid.UUID, _ uuid.UUID) (repository.TopicViewStatus, error) {
+	return repository.TopicViewStatus{}, nil
+}
+
+func (m *mockReviewRepo) GetConceptRetention(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]repository.ConceptRetention, error) {
+	return nil, nil
+}
+
+func (m *mockReviewRepo) GetTopicsWithCompletedLessons(_ context.Context) ([]repository.TopicUserID, error) {
+	return nil, nil
 }
 
 func (m *mockReviewRepo) GetCard(_ context.Context, id uuid.UUID) (models.ReviewCard, error) {
@@ -91,13 +117,13 @@ func (m *mockTopicRepo) GetRoadmap(_ context.Context, _, _ string) (*models.Topi
 
 type mockAiCardGen struct{}
 
-func (m *mockAiCardGen) GenerateReviewCards(_ context.Context, _ string, _ int, _ string, _ int) ([]models.ReviewCardInput, error) {
+func (m *mockAiCardGen) GenerateReviewCards(_ context.Context, _ string, _ int, _ string, _ int, _ string) ([]models.ReviewCardInput, error) {
 	return nil, nil
 }
 
 func TestRate_QualityBelow3_LapsesAndResets(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	userID := uuid.NewString()
@@ -128,7 +154,7 @@ func TestRate_QualityBelow3_LapsesAndResets(t *testing.T) {
 
 func TestRate_Quality3_IncrementsRepetitions(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	userID := uuid.NewString()
@@ -158,7 +184,7 @@ func TestRate_Quality3_IncrementsRepetitions(t *testing.T) {
 
 func TestRate_Quality5_FirstRepetition_SetsInterval6(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	userID := uuid.NewString()
@@ -185,7 +211,7 @@ func TestRate_Quality5_FirstRepetition_SetsInterval6(t *testing.T) {
 
 func TestRate_Quality5_SecondRepetition_MultipliesByEase(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	userID := uuid.NewString()
@@ -213,7 +239,7 @@ func TestRate_Quality5_SecondRepetition_MultipliesByEase(t *testing.T) {
 
 func TestRate_EaseFactor_ClampedTo13(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	userID := uuid.NewString()
@@ -237,7 +263,7 @@ func TestRate_EaseFactor_ClampedTo13(t *testing.T) {
 
 func TestRate_EaseFactor_DecreasesOnLowQuality(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	userID := uuid.NewString()
@@ -260,7 +286,7 @@ func TestRate_EaseFactor_DecreasesOnLowQuality(t *testing.T) {
 
 func TestRate_EaseFactor_IncreasesOnHighQuality(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	userID := uuid.NewString()
@@ -284,7 +310,7 @@ func TestRate_EaseFactor_IncreasesOnHighQuality(t *testing.T) {
 
 func TestRate_SetsLastReviewedAtAndDueAt(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	userID := uuid.NewString()
@@ -317,7 +343,7 @@ func TestRate_SetsLastReviewedAtAndDueAt(t *testing.T) {
 
 func TestRate_InvalidQuality_ReturnsError(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	_, err := svc.Rate(context.Background(), uuid.NewString(), uuid.NewString(), 6)
 	if err == nil {
@@ -332,7 +358,7 @@ func TestRate_InvalidQuality_ReturnsError(t *testing.T) {
 
 func TestRate_InvalidCardID_ReturnsError(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	_, err := svc.Rate(context.Background(), "not-a-uuid", uuid.NewString(), 3)
 	if err == nil {
@@ -342,7 +368,7 @@ func TestRate_InvalidCardID_ReturnsError(t *testing.T) {
 
 func TestRate_WrongUser_ReturnsError(t *testing.T) {
 	repo := newMockReviewRepo()
-	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{})
+	svc := NewReviewService(repo, &mockTopicRepo{}, &mockAiCardGen{}, nil)
 
 	cardID := uuid.NewString()
 	repo.cards[uuid.MustParse(cardID)] = models.ReviewCard{
