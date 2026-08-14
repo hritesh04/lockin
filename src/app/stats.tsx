@@ -1,15 +1,7 @@
 import { tokens } from "@/theme/tokens";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
-import {
-  Award,
-  BookOpen,
-  Calendar,
-  Check,
-  TrendingUp,
-  TriangleAlert,
-  Zap,
-} from "lucide-react-native";
+import { Award, BookOpen, Calendar, Check, Zap } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
 import {
   Dimensions,
@@ -688,18 +680,21 @@ export default function StatsScreen() {
                 const low = pct < 50;
                 return (
                   <View key={i} style={styles.weakItem}>
-                    <View style={styles.weakIconBox}>
+                    {/* <View style={styles.weakIconBox}>
                       {low ? (
                         <TriangleAlert size={14} color="#f59e0b" />
                       ) : (
                         <TrendingUp size={14} color="#22c55e" />
                       )}
-                    </View>
+                    </View> */}
                     <View style={styles.weakContent}>
-                      <Text style={styles.weakName}>
-                        {w.concept || "unknown"}
-                      </Text>
-                      <Text style={styles.weakTopicName}>{w.topic_name}</Text>
+                      <View style={{ flexDirection: "row", gap: 6 }}>
+                        <Text style={styles.weakName}>
+                          {w.concept || "unknown"}
+                        </Text>
+                        <Text>-</Text>
+                        <Text style={styles.weakTopicName}>{w.topic_name}</Text>
+                      </View>
                       <Text style={styles.weakSample}>
                         {w.sample_size} review{w.sample_size !== 1 ? "s" : ""}
                       </Text>
@@ -1094,11 +1089,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   feedItem: {
-    backgroundColor: tokens.colors.base,
+    backgroundColor: tokens.colors.surface,
     borderWidth: 1,
     borderColor: tokens.colors.border,
     borderRadius: tokens.radius["2xl"],
-    padding: 16,
+    padding: 8,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 16,

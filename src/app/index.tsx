@@ -64,6 +64,7 @@ export default function HomeScreen() {
   const consumeAutoOpenAddModal = useUIStore(
     (state) => state.consumeAutoOpenAddModal
   );
+  const serverEmail = useUserStore((s) => s.serverEmail);
 
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
@@ -242,10 +243,16 @@ export default function HomeScreen() {
           },
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       if (!isAbortError(e)) {
-        console.error(e);
-        Alert.alert("Error", "Failed to create topic. Please try again.");
+        const msg =
+          e?.response?.data?.error ||
+          "Failed to generate review cards. Try again later.";
+        console.warn("Failed to generate mixed review cards:", msg);
+        Alert.alert("Error", msg);
+        setShowModal(false);
+        setTopicName("");
+        setSelectedProficiency("beginner");
       }
     } finally {
       setIsGenerating(false);
@@ -258,16 +265,13 @@ export default function HomeScreen() {
     try {
       await generateAllReviewCards();
       await loadDue();
-    } catch (e) {
-      console.warn("Failed to generate mixed review cards:", e);
-      Alert.alert(
-        "Error",
-        "Couldn't generate review cards. Make sure your topics have completed lessons, then try again."
-      );
-      Alert.alert(
-        "Mixed Review",
-        "Couldn't generate review cards right now. Make sure your topics have completed lessons, then try again."
-      );
+    } catch (e: any) {
+      const msg =
+        e?.response?.data?.error ||
+        "Failed to generate review cards. Try again later.";
+      console.warn("Failed to generate mixed review cards:", msg);
+      Alert.alert("Error", msg);
+      return;
     } finally {
       setReviewGenerating(false);
     }
@@ -331,7 +335,7 @@ export default function HomeScreen() {
         <Header
           greeting={getGreeting()}
           subtitle="Ready to lock in?"
-          initials="A"
+          initials={serverEmail?.charAt(0).toUpperCase() ?? "U"}
           onAvatarPress={() => router.push("/profile" as any)}
         />
 

@@ -1,6 +1,12 @@
-import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { tokens } from '../theme/tokens';
+import React from "react";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { tokens } from "../theme/tokens";
 
 interface TopicCardProps {
   title: string;
@@ -11,28 +17,40 @@ interface TopicCardProps {
   onPress: () => void;
 }
 
-export function TopicCard({ title, sessions, progress, emoji, isGenerating, onPress }: TopicCardProps) {
+export function TopicCard({
+  title,
+  sessions,
+  progress,
+  emoji,
+  isGenerating,
+  onPress,
+}: TopicCardProps) {
   return (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.8}
-      onPress={onPress}
-    >
-      <View style={styles.iconContainer}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={onPress}>
+      {/* <View style={styles.iconContainer}>
         <Text style={styles.emoji}>{emoji}</Text>
-      </View>
+      </View> */}
       <View style={styles.info}>
         <Text style={styles.title}>{title}</Text>
         {isGenerating ? (
           <View style={styles.generatingRow}>
-            <ActivityIndicator size="small" color={tokens.colors.accent} style={{ marginRight: 6 }} />
+            <ActivityIndicator
+              size="small"
+              color={tokens.colors.accent}
+              style={{ marginRight: 6 }}
+            />
             <Text style={styles.generatingText}>Generating roadmap...</Text>
           </View>
         ) : (
           <>
             <Text style={styles.sub}>Continue where you left off</Text>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.min(progress, 100)}%` },
+                ]}
+              />
             </View>
           </>
         )}
@@ -53,8 +71,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.surface,
     borderRadius: tokens.radius.xl,
     padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: tokens.colors.border,
     // @ts-ignore
@@ -65,8 +83,8 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: tokens.radius.md,
     backgroundColor: tokens.colors.base,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: tokens.spacing[4],
   },
   emoji: {
@@ -86,8 +104,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   generatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 2,
   },
   generatingText: {
@@ -99,10 +117,10 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.base,
     borderRadius: tokens.radius.full,
     marginTop: tokens.spacing[2],
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     backgroundColor: tokens.colors.accent,
     borderRadius: tokens.radius.full,
   },
@@ -111,12 +129,12 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: tokens.colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginLeft: tokens.spacing[3],
   },
   playIcon: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 16,
     marginLeft: 2,
   },
